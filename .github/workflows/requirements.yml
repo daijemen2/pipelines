@@ -8,7 +8,6 @@ on:
     - cron: '35 14 * * 4'  # 9:35 a.m. hora Colombia (UTC-5 = 14:35 UTC)
 
 jobs:
-  suma:
     runs-on: ubuntu-latest
     steps:
       - name: Sumar dos números en bash
