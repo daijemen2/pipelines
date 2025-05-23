@@ -5,13 +5,14 @@ on:
     branches:
       - 'feature/**'
   schedule:
-    - cron: '35 14 * * 4'  # 9:35 a.m. hora Colombia (UTC-5 = 14:35 UTC)
+    - cron: '35 14 * * 4'
 
 jobs:
   suma:
     runs-on: ubuntu-latest
     steps:
       - name: Sumar dos números en bash
+        shell: bash
         run: |
           num1=5
           num2=7
