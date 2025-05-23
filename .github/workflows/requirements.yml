@@ -4,11 +4,15 @@ on:
   push:
     branches:
       - feature/*
+  pull_request:
+    # Cualquier PR donde la rama origen (head) empiece con 'feature/'
+    types: [opened, synchronize, reopened]
   schedule:
     - cron: "35 14 * * 4"  # 9:35 a. m. en Colombia (UTC-5)
 
 jobs:
   integration-api-tests:
+    if: startsWith(github.head_ref, 'feature/') || startsWith(github.ref, 'refs/heads/feature/')
     runs-on: ubuntu-latest
     steps:
       - name: Sumar dos números en bash
