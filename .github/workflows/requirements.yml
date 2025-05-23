@@ -5,7 +5,7 @@ on:
     branches:
       - 'feature/**'
   schedule:
-    - cron: '35 14 * * 4'  # UTC: equivale a 9:35 a.m. en Colombia
+    - cron: "35 14 * * 4"
 
 jobs:
   runs-on: ubuntu-latest
