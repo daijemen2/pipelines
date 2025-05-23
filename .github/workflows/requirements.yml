@@ -10,7 +10,6 @@ on:
     - cron: "35 14 * * 4"
 jobs:
   integration-api-tests:
-    if: startsWith(github.head_ref, 'feature/') || startsWith(github.ref, 'refs/heads/feature/')
     runs-on: ubuntu-latest
     steps:
       - name: Sumar dos números en bash
