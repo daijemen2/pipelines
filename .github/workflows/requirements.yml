@@ -6,14 +6,14 @@ on:
       - 'feature/**'
   schedule:
     - cron: "35 14 * * 4"
-
 jobs:
-  runs-on: ubuntu-latest
-  steps:
-    - name: Sumar dos números en bash
-      shell: bash
-      run: |
-        num1=5
-        num2=7
-        suma=$((num1 + num2))
-        echo "La suma de $num1 + $num2 es: $suma"
+  integration-api-tests:
+#  runs-on: ubuntu-latest
+#  steps:
+#    - name: Sumar dos números en bash
+#      shell: bash
+#      run: |
+#        num1=5
+#        num2=7
+#        suma=$((num1 + num2))
+#        echo "La suma de $num1 + $num2 es: $suma"
