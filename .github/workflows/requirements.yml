@@ -1,4 +1,4 @@
-name: Suma
+name: Suma numeros
 
 on:
   pull_request:
