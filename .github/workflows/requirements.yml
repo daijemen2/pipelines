@@ -1,18 +1,15 @@
 name: Suma
-
-on:
+'on':
   pull_request:
     branches:
-      - 'feature/**'
+      - feature/**
   schedule:
-    - cron: '35 14 * * 4'
-
+    - cron: 35 14 * * 4
 jobs:
   suma:
     runs-on: ubuntu-latest
     steps:
       - name: Sumar dos números en bash
-        shell: bash
         run: |
           num1=5
           num2=7
