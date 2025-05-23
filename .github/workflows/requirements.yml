@@ -6,10 +6,10 @@ on:
       - 'feature/**'
 
   schedule:
-    - cron: '35 14 * * 4'
+    - cron: '35 14 * * 4'  # 9:35 a.m. hora Colombia, que es UTC-5
 
 jobs:
-
+  suma:
     runs-on: ubuntu-latest
     steps:
       - name: Sumar dos números en bash
