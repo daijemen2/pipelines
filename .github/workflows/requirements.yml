@@ -1,18 +1,11 @@
-name: Suma numeros
+name: pipeline prueba
 
 on:
-  pull_request:
-    branches:
-      - feature/repositorio
+  push
 
 jobs:
-  integration-api-tests:
-    runs-on: ubuntu-latest
+  print:
+    runs-on: ubuntu-22.04   # Aqui debo definir el runner, en ese caso una maquina ubuntu en su version 22.04
     steps:
-    - name: Sumar dos números en bash
-      shell: bash
-      run: |
-        num1=5
-        num2=10
-        suma=$((num1 + num2))
-        echo "La suma de $num1 + $num2 es: $suma"
+      - name: print hello world
+        run: echo "Hello world :)"
