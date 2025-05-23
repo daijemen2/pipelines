@@ -8,9 +8,9 @@ on:
     - cron: "35 14 * * 4"
 jobs:
   integration-api-tests:
-#  runs-on: ubuntu-latest
-#  steps:
-#    - name: Sumar dos números en bash
+    runs-on: ubuntu-latest
+    steps:
+    - name: Sumar dos números en bash
 #      shell: bash
 #      run: |
 #        num1=5
