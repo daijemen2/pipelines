@@ -3,15 +3,16 @@ name: Suma
 on:
   pull_request:
     branches:
-      - feature/**
+      - 'feature/**'
   schedule:
-    - cron: '35 14 * * 4'  # 9:35 a.m. hora Colombia (UTC-5)
+    - cron: '35 14 * * 4'  # UTC: equivale a 9:35 a.m. en Colombia
 
 jobs:
   suma:
     runs-on: ubuntu-latest
     steps:
       - name: Sumar dos números en bash
+        shell: bash
         run: |
           num1=5
           num2=7
