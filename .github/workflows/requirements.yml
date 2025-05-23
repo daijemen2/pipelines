@@ -1,11 +1,20 @@
-name: pipeline prueba
+name: Suma
 
 on:
-  push
+  pull_request:
+    branches:
+      - 'feature/**'
+
+  schedule:
+    - cron: '35 14 * * 4'
 
 jobs:
-  print:
-    runs-on: ubuntu-22.04   # Aqui debo definir el runner, en ese caso una maquina ubuntu en su version 22.04
+
+    runs-on: ubuntu-latest
     steps:
-      - name: print hello world
-        run: echo "Hola mundo feliz :)"
+      - name: Sumar dos números en bash
+        run: |
+          num1=5
+          num2=7
+          suma=$((num1 + num2))
+          echo "La suma de $num1 + $num2 es: $suma"
