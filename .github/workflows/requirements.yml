@@ -4,8 +4,7 @@ on:
   pull_request:
     branches:
       - 'feature/**'
-  schedule:
-    - cron: "35 14 * * 4"
+
 jobs:
   integration-api-tests:
     runs-on: ubuntu-latest
