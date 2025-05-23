@@ -3,7 +3,7 @@ name: Suma numeros
 on:
   pull_request:
     branches:
-      - 'feature/**'
+      - feature/*
 
 jobs:
   integration-api-tests:
