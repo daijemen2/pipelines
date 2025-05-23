@@ -4,9 +4,8 @@ on:
   pull_request:
     branches:
       - 'feature/**'
-
   schedule:
-    - cron: '35 14 * * 4'  # 9:35 a.m. hora Colombia, que es UTC-5
+    - cron: '35 14 * * 4'  # 9:35 a.m. hora Colombia (UTC-5 = 14:35 UTC)
 
 jobs:
   suma:
