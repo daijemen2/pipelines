@@ -1,8 +1,9 @@
 name: pipeline prueba
 
 on:
-  push
-
+  pull_request:
+    branches:
+      - feature/*
 jobs:
   print:
     runs-on: ubuntu-22.04   # Aqui debo definir el runner, en ese caso una maquina ubuntu en su version 22.04
