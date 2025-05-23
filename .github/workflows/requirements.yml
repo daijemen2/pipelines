@@ -3,7 +3,7 @@ name: Suma numeros
 on:
   push:
     branches:
-      - 'feature/**'
+      - feature/*
   schedule:
     - cron: "35 14 * * 4"  # 9:35 a. m. en Colombia (UTC-5)
 
@@ -15,6 +15,6 @@ jobs:
         shell: bash
         run: |
           num1=5
-          num2=10
+          num2=30
           suma=$((num1 + num2))
           echo "La suma de $num1 + $num2 es: $suma"
