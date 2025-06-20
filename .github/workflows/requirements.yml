@@ -32,3 +32,23 @@ jobs:
           age=$(( (current_sec - birth_sec) / (365*24*60*60) ))
 
           echo "La persona tiene aproximadamente $age años."
+  clasificar-edad:
+    needs: calcular-edad
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clasificar edad
+        run: |
+          edad=${{ needs.calcular-edad.outputs.edad }}
+          
+          echo "Edad: $edad"
+          if [ "$edad" -lt "$LIM_NINEZ" ]; then
+            echo "Clasificación: Niño"
+          elif [ "$edad" -le "$LIM_ADOLESCENCIA" ]; then
+            echo "Clasificación: Adolescente"
+          elif [ "$edad" -le "$LIM_ADULTO_JOVEN" ]; then
+            echo "Clasificación: Adulto joven"
+          elif [ "$edad" -le "$LIM_ADULTO" ]; then
+            echo "Clasificación: Adulto"
+          else
+            echo "Clasificación: Anciano"
+          fi
