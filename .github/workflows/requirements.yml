@@ -1,6 +1,10 @@
 name: Calcular Edad y clasificar
 
 on:
+  push:
+    branches:
+      - feature/*
+
   workflow_dispatch:
     inputs:
       year:
