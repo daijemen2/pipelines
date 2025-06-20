@@ -13,33 +13,33 @@ env:
 
 jobs:
   suma:
-    name: Job 1 - Sumar dos números
+    name: Calcular suma
     runs-on: ubuntu-latest
     outputs:
-      resultado: ${{ steps.calcular.outputs.suma }}
+      resultado: ${{ steps.calc.outputs.suma }}
     steps:
-      - name: calculo suma
-        id: calcular
+      - name: Calcular suma con variables de entorno
+        id: calc
         run: |
           echo "Número 1: $num1"
           echo "Número 2: $num2"
           suma=$((num1 + num2))
-          echo "La suma de $num1 + $num2 es: $suma"
+          echo "Suma: $suma"
           echo "suma=$suma" >> $GITHUB_OUTPUT
 
   evaluacion:
-    name: Evaluar resultado de la suma
+    name: Evaluar resultado
     runs-on: ubuntu-latest
     needs: suma
     steps:
-      - name: Paso 2 - Evaluar si es mayor, menor o igual a 10
-        run: |
-          resultado=${{ needs.suma.outputs.resultado }}
-          echo "Resultado de la suma: $resultado"
-          if [ "$resultado" -gt 10 ]; then
-            echo "La suma es mayor a 10"
-          elif [ "$resultado" -lt 10 ]; then
-            echo "La suma es menor a 10"
-          else
-            echo "La suma es igual a 10"
-          fi
+      - name: Si la suma es mayor a 10
+        if: ${{ needs.suma.outputs.resultado > 10 }}
+        run: echo "::notice::✅ La suma es mayor a 10"
+
+      - name: Si la suma es igual a 10
+        if: ${{ needs.suma.outputs.resultado == 10 }}
+        run: echo "::notice::🔹 La suma es igual a 10"
+
+      - name: Si la suma es menor a 10
+        if: ${{ needs.suma.outputs.resultado < 10 }}
+        run: echo "::notice::ℹ️ La suma es menor a 10"
