@@ -15,30 +15,31 @@ on:
 
 env:
   lim_ninez: ${{ vars.LIM_NINEZ }}
-  lim_adolescencia: ${{ vars.LIM_ADOLESCENCIA}}
-  lim_adulto_joven: ${{ vars.LIM_ADULTO_JOVEN}}
-  lim_adulto: ${{LIM_ADULTO}}
+  lim_adolescencia: ${{ vars.LIM_ADOLESCENCIA }}
+  lim_adulto_joven: ${{ vars.LIM_ADULTO_JOVEN }}
+  lim_adulto: ${{ vars.LIM_ADULTO }}
 
 jobs:
   calcular-edad:
     runs-on: ubuntu-latest
+    outputs:
+      edad: ${{ steps.calculo.outputs.edad }}
     steps:
       - name: Calcular edad actual
+        id: calculo
         run: |
           echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
 
-          # Convertir la fecha de nacimiento a formato Unix
           birth_date="${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
           birth_sec=$(date -d "$birth_date" +%s)
-
-          # Obtener la fecha actual en segundos desde epoch
           current_sec=$(date +%s)
 
-          # Calcular la edad en años
-          age=$(( (current_sec - birth_sec) / (365*24*60*60) ))
+          edad=$(( (current_sec - birth_sec) / (365*24*60*60) ))
 
-          echo "La persona tiene aproximadamente $age años."
+          echo "La persona tiene aproximadamente $edad años."
+          echo "edad=$edad" >> "$GITHUB_OUTPUT"
           
+
   clasificar-edad:
     needs: calcular-edad
     runs-on: ubuntu-latest
@@ -46,15 +47,15 @@ jobs:
       - name: Clasificar edad
         run: |
           edad=${{ needs.calcular-edad.outputs.edad }}
-          
+
           echo "Edad: $edad"
-          if [ "$edad" -lt "$LIM_NINEZ" ]; then
+          if [ "$edad" -lt "${{ env.lim_ninez }}" ]; then
             echo "Clasificación: Niño"
-          elif [ "$edad" -le "$LIM_ADOLESCENCIA" ]; then
+          elif [ "$edad" -le "${{ env.lim_adolescencia }}" ]; then
             echo "Clasificación: Adolescente"
-          elif [ "$edad" -le "$LIM_ADULTO_JOVEN" ]; then
+          elif [ "$edad" -le "${{ env.lim_adulto_joven }}" ]; then
             echo "Clasificación: Adulto joven"
-          elif [ "$edad" -le "$LIM_ADULTO" ]; then
+          elif [ "$edad" -le "${{ env.lim_adulto }}" ]; then
             echo "Clasificación: Adulto"
           else
             echo "Clasificación: Anciano"
