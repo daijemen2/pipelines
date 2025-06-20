@@ -11,13 +11,12 @@ env:
   num1: ${{ vars.NUM1 }}
   num2: ${{ vars.NUM2 }}
 
-
 jobs:
   calcular:
     runs-on: ubuntu-latest
     steps:
       - name: Calcular Edad
         run: |
-          echo "Año: ${{ github.event.inputs.Año }}"
+          echo "Year: ${{ github.event.inputs.Year }}"
           echo "Mes: ${{ github.event.inputs.Mes }}"
           echo "Dia: ${{ github.event.inputs.Dia }}"
