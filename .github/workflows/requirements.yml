@@ -1,12 +1,16 @@
 name: Suma numeros
 
 on:
-  push:
-    branches:
-      - feature/*
-  pull_request:
-    types: [opened, synchronize, reopened]
-
+  workflow_dispatch:
+    inputs:
+      Year:
+        description: 'Edad de la primera persona'
+        required: true
+        default: '30'
+      Mes:
+        description: 'Edad de la segunda persona'
+        required: true
+        default: '25'
 env:
   num1: ${{ vars.NUM1 }}
   num2: ${{ vars.NUM2 }}
