@@ -1,6 +1,9 @@
 name: Suma numeros
 
 on:
+  push:
+    branches:
+      - feature/*
   workflow_dispatch:
     inputs:
       Year:
@@ -11,9 +14,6 @@ on:
         description: 'Edad de la segunda persona'
         required: true
         default: '25'
-env:
-  num1: ${{ vars.NUM1 }}
-  num2: ${{ vars.NUM2 }}
 
 jobs:
   calcular:
