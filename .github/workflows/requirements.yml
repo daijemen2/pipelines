@@ -25,13 +25,13 @@ jobs:
           echo "La suma de $num1 + $num2 es: $suma"
           echo "suma=$suma" >> $GITHUB_ENV
 
-      - name: Paso 2 - Evaluar resultado
+      - name: Paso 2 - Evaluar resultado con llaves
         run: |
           echo "Resultado de la suma: $suma"
-          if [ "$suma" -gt 10 ]; then
+          if [[ "$suma" -gt 10 ]]; then {
             echo "La suma es mayor a 10"
-          elif [ "$suma" -lt 10 ]; then
+          } elif [[ "$suma" -lt 10 ]]; then {
             echo "La suma es menor a 10"
-          else
+          } else {
             echo "La suma es igual a 10"
-          fi
+          }
