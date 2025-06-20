@@ -47,16 +47,17 @@ jobs:
       - name: Clasificar edad
         run: |
           edad=${{ needs.calcular-edad.outputs.edad }}
+          
+            echo "Edad: $edad"
 
-          echo "Edad: $edad"
-          if [ "$edad" -lt "${{ env.lim_ninez }}" ]; then
-            echo "Clasificación: Niño"
-          elif [ "$edad" -le "${{ env.lim_adolescencia }}" ]; then
-            echo "Clasificación: Adolescente"
-          elif [ "$edad" -le "${{ env.lim_adulto_joven }}" ]; then
-            echo "Clasificación: Adulto joven"
-          elif [ "$edad" -le "${{ env.lim_adulto }}" ]; then
-            echo "Clasificación: Adulto"
-          else
-            echo "Clasificación: Anciano"
-          fi
+            if (( edad < ${{ env.lim_ninez }} )); then
+              echo "Clasificación: Niño"
+            elif (( edad <= ${{ env.lim_adolescencia }} )); then
+              echo "Clasificación: Adolescente"
+            elif (( edad <= ${{ env.lim_adulto_joven }} )); then
+              echo "Clasificación: Adulto joven"
+            elif (( edad <= ${{ env.lim_adulto }} )); then
+              echo "Clasificación: Adulto"
+            else
+              echo "Clasificación: Anciano"
+            fi
