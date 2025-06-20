@@ -12,9 +12,11 @@ on:
       dia:
         description: 'Día de nacimiento (01-31)'
         required: true
-push:
+
+  push:
     branches:
       - feature/*
+
 env:
   lim_ninez: ${{ vars.LIM_NINEZ }}
   lim_adolescencia: ${{ vars.LIM_ADOLESCENCIA }}
@@ -32,10 +34,12 @@ jobs:
         run: |
           echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.mes }}-${{ inputs.dia }}"
           birth_date="${{ inputs.year }}-${{ inputs.mes }}-${{ inputs.dia }}"
+
+          # Calcular edad en años
           edad=$(( ( $(date +%s) - $(date -d "$birth_date" +%s) ) / (365*24*60*60) ))
+
           echo "La persona tiene $edad años."
           echo "edad=$edad" >> "$GITHUB_OUTPUT"
-          
 
   clasificar-edad:
     needs: calcular-edad
@@ -45,16 +49,16 @@ jobs:
         run: |
           edad=${{ needs.calcular-edad.outputs.edad }}
           
-            echo "Edad: $edad"
+          echo "Edad: $edad"
 
-            if (( edad < ${{ env.lim_ninez }} )); then
-              echo "Clasificación: Niño"
-            elif (( edad <= ${{ env.lim_adolescencia }} )); then
-              echo "Clasificación: Adolescente"
-            elif (( edad <= ${{ env.lim_adulto_joven }} )); then
-              echo "Clasificación: Adulto joven"
-            elif (( edad <= ${{ env.lim_adulto }} )); then
-              echo "Clasificación: Adulto"
-            else
-              echo "Clasificación: Anciano"
-            fi
+          if (( edad < ${{ env.lim_ninez }} )); then
+            echo "Clasificación: Niño"
+          elif (( edad <= ${{ env.lim_adolescencia }} )); then
+            echo "Clasificación: Adolescente"
+          elif (( edad <= ${{ env.lim_adulto_joven }} )); then
+            echo "Clasificación: Adulto joven"
+          elif (( edad <= ${{ env.lim_adulto }} )); then
+            echo "Clasificación: Adulto"
+          else
+            echo "Clasificación: Anciano"
+          fi
