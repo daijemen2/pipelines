@@ -6,17 +6,38 @@ on:
       - feature/*
   pull_request:
     types: [opened, synchronize, reopened]
-  schedule:
-    - cron: "35 14 * * 4"
+
+env:
+  num1: ${{ vars.NUM1 }}
+  num2: ${{ vars.NUM2 }}
+
 jobs:
-  integration-api-tests:
+  suma:
+    name: Job 1 - Sumar dos números
     runs-on: ubuntu-latest
+    outputs:
+      resultado: ${{ steps.calcular.outputs.suma }}
     steps:
-      - name: Sumar dos números en bash
-        shell: bash
+      - name: calculo suma
+        id: calcular
         run: |
-          num1=5
-          num2=30
+          echo "Número 1: $num1"
+          echo "Número 2: $num2"
           suma=$((num1 + num2))
           echo "La suma de $num1 + $num2 es: $suma"
-          
+        
+
+  evaluacion:
+    name: Evaluar resultado de la suma
+    runs-on: ubuntu-latest
+    needs: suma
+    steps:
+      - name: Paso 2 - Evaluar si es mayor a 10
+        run: |
+          resultado=${{ needs.suma.outputs.resultado }}
+          echo "Resultado de la suma: $resultado"
+          if [ "$resultado" -gt 10 ]; then
+            echo "La suma es mayor a 10"
+          else
+            echo "La suma es menor o igual a 10"
+          fi
