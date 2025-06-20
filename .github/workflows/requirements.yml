@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feature/*
+      - staging
+      - master
 
   workflow_dispatch:
     inputs:
