@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       year:
-        description: 'Año de nacimiento'
+        description: 'Año de nacimiento (yyyy)'
         required: true
-      month:
+      mes:
         description: 'Mes de nacimiento (01-12)'
         required: true
-      day:
+      dia:
         description: 'Día de nacimiento (01-31)'
         required: true
 
@@ -28,8 +28,8 @@ jobs:
       - name: Calcular edad actual
         id: calculo
         run: |
-          echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
-          birth_date="${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
+          echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.mes }}-${{ inputs.dia }}"
+          birth_date="${{ inputs.year }}-${{ inputs.mes }}-${{ inputs.dia }}"
           edad=$(( ( $(date +%s) - $(date -d "$birth_date" +%s) ) / (365*24*60*60) ))
           echo "La persona tiene $edad años."
           echo "edad=$edad" >> "$GITHUB_OUTPUT"
