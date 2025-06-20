@@ -1,23 +1,17 @@
-name: Suma numeros
+name: Calcular Edad
 
 on:
-  push:
-    branches:
-      - feature/*
   workflow_dispatch:
     inputs:
       year:
-        description: 'Año de la persona'
+        description: 'Año de nacimiento'
         required: true
-        default: '2010'
-      mes:
-        description: 'Mes de la persona'
+      month:
+        description: 'Mes de nacimiento (01-12)'
         required: true
-        default: '02'
-      dia:
-        description: 'Día de la persona'
+      day:
+        description: 'Día de nacimiento (01-31)'
         required: true
-        default: '02'
 
 jobs:
   calcular-edad:
@@ -25,4 +19,16 @@ jobs:
     steps:
       - name: Calcular edad actual
         run: |
-          echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.mes }}-${{ inputs.dia }}"
+          echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
+
+          # Convertir la fecha de nacimiento a formato Unix
+          birth_date="${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
+          birth_sec=$(date -d "$birth_date" +%s)
+
+          # Obtener la fecha actual en segundos desde epoch
+          current_sec=$(date +%s)
+
+          # Calcular la edad en años
+          age=$(( (current_sec - birth_sec) / (365*24*60*60) ))
+
+          echo "La persona tiene aproximadamente $age años."
