@@ -35,6 +35,6 @@ build/
 # VS Code
 .vscode/
 
-# Mac OS
+# Mac OS1
 .DS_Store
 .idea/aws.xml
