@@ -7,19 +7,23 @@ on:
   workflow_dispatch:
     inputs:
       Year:
-        description: 'Edad de la primera persona'
+        description: 'Año de la persona'
         required: true
-        default: '30'
+        default: '10'
       Mes:
-        description: 'Edad de la segunda persona'
+        description: 'Mes de la persona'
         required: true
-        default: '25'
+        default: '02'
 
+      Dia:
+        description: 'Dia de la persona'
+        required: true
+        default: '02'
+         
 jobs:
-  calcular:
+  calcular-edad:
     runs-on: ubuntu-latest
     steps:
-      - name: Calcular Edad
+      - name: Calcular edad actual
         run: |
-         
-              
+          echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.Mes }}-${{ inputs.Dia }}"
