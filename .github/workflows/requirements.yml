@@ -1,4 +1,4 @@
-name: Calcular Edad
+name: Calcular Edad y clasificar
 
 on:
   workflow_dispatch:
@@ -29,14 +29,9 @@ jobs:
         id: calculo
         run: |
           echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
-
           birth_date="${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"
-          birth_sec=$(date -d "$birth_date" +%s)
-          current_sec=$(date +%s)
-
-          edad=$(( (current_sec - birth_sec) / (365*24*60*60) ))
-
-          echo "La persona tiene aproximadamente $edad años."
+          edad=$(( ( $(date +%s) - $(date -d "$birth_date" +%s) ) / (365*24*60*60) ))
+          echo "La persona tiene $edad años."
           echo "edad=$edad" >> "$GITHUB_OUTPUT"
           
 
