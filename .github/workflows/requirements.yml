@@ -5,6 +5,7 @@ on:
     branches:
       - feature/*
   workflow_dispatch:
+
     inputs:
       Year:
         description: 'Año de la persona'
@@ -26,4 +27,3 @@ jobs:
     steps:
       - name: Calcular edad actual
         run: |
-          echo "Fecha de nacimiento ingresada: ${{ inputs.year }}-${{ inputs.Mes }}-${{ inputs.Dia }}"
