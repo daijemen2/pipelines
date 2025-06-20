@@ -1,20 +1,25 @@
-name: Calcular Edad
-'on':
+name: Suma numeros
+
+on:
+  push:
+    branches:
+      - feature/*
   workflow_dispatch:
     inputs:
-      year:
-        description: Año de nacimiento
+      Year:
+        description: 'Edad de la primera persona'
         required: true
-      month:
-        description: Mes de nacimiento (01-12)
+        default: '30'
+      Mes:
+        description: 'Edad de la segunda persona'
         required: true
-      day:
-        description: Día de nacimiento (01-31)
-        required: true
+        default: '25'
+
 jobs:
-  calcular-edad:
+  calcular:
     runs-on: ubuntu-latest
     steps:
-      - name: Calcular edad actual
-        run: ''
-echo "Fecha de nacimiento ingresada: '${{ inputs.year }}-${{ inputs.month }}-${{ inputs.day }}"'
+      - name: Calcular Edad
+        run: |
+         
+              
