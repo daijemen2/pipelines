@@ -12,11 +12,6 @@ on:
       dia:
         description: 'Día de nacimiento (01-31)'
         required: true
-
-  push:
-    branches:
-      - feature/*
-
 env:
   lim_ninez: ${{ vars.LIM_NINEZ }}
   lim_adolescencia: ${{ vars.LIM_ADOLESCENCIA }}
