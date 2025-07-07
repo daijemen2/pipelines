@@ -1,4 +1,4 @@
-name: Operaciones Matemáticas con Matrix
+name: Operaciones Matemáticas Básicas
 
 on:
   push:
@@ -16,56 +16,51 @@ on:
         required: true
 
 jobs:
-  operaciones_matematicas:
-    name: Ejecución de Operaciones Matemáticas
+  suma:
+    name: Suma
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        operacion: [suma, resta, multiplicacion, division]
-        tipo: [basico, avanzado]
-        include:
-          - operacion: division
-            tipo: avanzado
-            extra: true
-        exclude:
-          - operacion: multiplicacion
-            tipo: avanzado
-
-    continue-on-error: ${{ matrix.operacion == 'division' }}
-
     steps:
-      - name: Preparar números
-        run: |
-          echo "Número 1: ${{ github.event.inputs.numero1 || '10' }}"
-          echo "Número 2: ${{ github.event.inputs.numero2 || '2' }}"
-
-      - name: Ejecutar ${{ matrix.operacion }} [${{ matrix.tipo }}]
+      - name: Ejecutar Suma
         run: |
           num1=${{ github.event.inputs.numero1 || 10 }}
           num2=${{ github.event.inputs.numero2 || 2 }}
-          echo "Operación: ${{ matrix.operacion }}"
-          echo "Tipo: ${{ matrix.tipo }}"
-          if [ "${{ matrix.operacion }}" == "suma" ]; then
-            resultado=$((num1 + num2))
-            echo "Suma: $resultado"
-          elif [ "${{ matrix.operacion }}" == "resta" ]; then
-            resultado=$((num1 - num2))
-            echo "Resta: $resultado"
-          elif [ "${{ matrix.operacion }}" == "multiplicacion" ]; then
-            resultado=$((num1 * num2))
-            echo "Multiplicación: $resultado"
-          elif [ "${{ matrix.operacion }}" == "division" ]; then
-            if [ "$num2" -eq 0 ]; then
-              echo "Error: División entre cero no permitida"
-              exit 1
-            fi
-            resultado=$(echo "scale=2; $num1 / $num2" | bc)
-            echo "División: $resultado"
-          fi
+          resultado=$((num1 + num2))
+          echo "Suma: $resultado"
 
-          if [ "${{ matrix.extra }}" == "true" ]; then
-            echo "Esta operación usa configuración EXTRA."
+  resta:
+    name: Resta
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ejecutar Resta
+        run: |
+          num1=${{ github.event.inputs.numero1 || 10 }}
+          num2=${{ github.event.inputs.numero2 || 2 }}
+          resultado=$((num1 - num2))
+          echo "Resta: $resultado"
+
+  multiplicacion:
+    name: Multiplicación
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ejecutar Multiplicación
+        run: |
+          num1=${{ github.event.inputs.numero1 || 10 }}
+          num2=${{ github.event.inputs.numero2 || 2 }}
+          resultado=$((num1 * num2))
+          echo "Multiplicación: $resultado"
+
+  division:
+    name: División
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Ejecutar División
+        run: |
+          num1=${{ github.event.inputs.numero1 || 10 }}
+          num2=${{ github.event.inputs.numero2 || 2 }}
+          if [ "$num2" -eq 0 ]; then
+            echo "Error: División entre cero no permitida"
+            exit 1
           fi
+          resultado=$(echo "scale=2; $num1 / $num2" | bc)
+          echo "División: $resultado"
