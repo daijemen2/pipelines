@@ -1,13 +1,13 @@
-name: Operaciones Matemáticas Básicas
+name: Operaciones Matematicas
 
 on:
   workflow_dispatch:
     inputs:
       numero1:
-        description: 'Primer número'
+        description: 'Primer numero'
         required: true
       numero2:
-        description: 'Segundo número'
+        description: 'Segundo numero'
         required: true
 
 jobs:
@@ -34,28 +34,28 @@ jobs:
           echo "Resta: $resultado"
 
   multiplicacion:
-    name: Multiplicación
+    name: Multiplicacion
     runs-on: ubuntu-latest
     steps:
-      - name: Ejecutar Multiplicación
+      - name: Ejecutar Multiplicacion
         run: |
           num1=${{ github.event.inputs.numero1 }}
           num2=${{ github.event.inputs.numero2 }}
           resultado=$((num1 * num2))
-          echo "Multiplicación: $resultado"
+          echo "Multiplicacion: $resultado"
 
   division:
-    name: División
+    name: Division
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - name: Ejecutar División
+      - name: Ejecutar Division
         run: |
           num1=${{ github.event.inputs.numero1 }}
           num2=${{ github.event.inputs.numero2 }}
           if [ "$num2" -eq 0 ]; then
-            echo "Error: División entre cero no permitida"
+            echo "Error: Division entre cero no permitida"
             exit 1
           fi
           resultado=$(echo "scale=2; $num1 / $num2" | bc)
-          echo "División: $resultado"
+          echo "Division: $resultado"
