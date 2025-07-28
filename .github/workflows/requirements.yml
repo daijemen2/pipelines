@@ -3,6 +3,8 @@ name: upload-artifact
 on:
   push:
     branches:
+      - feature/*
+      - staging
       - master
 
 jobs:
