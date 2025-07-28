@@ -1,61 +1,49 @@
-name: Operaciones Matematicas
+name: upload-artifact
 
 on:
-  workflow_dispatch:
-    inputs:
-      numero1:
-        description: 'Primer numero'
-        required: true
-      numero2:
-        description: 'Segundo numero'
-        required: true
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
 
 jobs:
-  suma:
-    name: Suma
+  convert_and_upload_text_to_json:
+    name: Convert and upload text to JSON
     runs-on: ubuntu-latest
     steps:
-      - name: Ejecutar Suma
+      - name: Set up cache key
+        id: cache-key
         run: |
-          num1=${{ github.event.inputs.numero1 }}
-          num2=${{ github.event.inputs.numero2 }}
-          resultado=$((num1 + num2))
-          echo "Suma: $resultado"
+          echo "CACHE_KEY=$(echo '{\"name\": \"pipelines\",\"activity\": 3,\"module\": 2,\"isRequired\": false}' | sha256sum | awk '{print $1}')" >> $GITHUB_ENV
 
-  resta:
-    name: Resta
-    runs-on: ubuntu-latest
-    steps:
-      - name: Ejecutar Resta
-        run: |
-          num1=${{ github.event.inputs.numero1 }}
-          num2=${{ github.event.inputs.numero2 }}
-          resultado=$((num1 - num2))
-          echo "Resta: $resultado"
+      - name: Restore JSON from cache
+        uses: actions/cache@v3
+        with:
+          path: archivo.json
+          key: ${{ env.CACHE_KEY }}
 
-  multiplicacion:
-    name: Multiplicacion
-    runs-on: ubuntu-latest
-    steps:
-      - name: Ejecutar Multiplicacion
+      - name: Check if JSON exists
+        id: json-exists
         run: |
-          num1=${{ github.event.inputs.numero1 }}
-          num2=${{ github.event.inputs.numero2 }}
-          resultado=$((num1 * num2))
-          echo "Multiplicacion: $resultado"
+          echo "JSON_EXISTS=$(test -f archivo.json && echo true || echo false)" >> $GITHUB_ENV
 
-  division:
-    name: Division
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - name: Ejecutar Division
-        run: |
-          num1=${{ github.event.inputs.numero1 }}
-          num2=${{ github.event.inputs.numero2 }}
-          if [ "$num2" -eq 0 ]; then
-            echo "Error: Division entre cero no permitida"
-            exit 1
-          fi
-          resultado=$(echo "scale=2; $num1 / $num2" | bc)
-          echo "Division: $resultado"
+      - name: Convert to JSON
+        if: env.JSON_EXISTS == 'false'
+        uses: devops-actions/json-to-file@v1.0.4
+        with:
+          json: '{"name": "pipelines","activity": 3,"module": 2,"isRequired": false}'
+          filename: 'archivo.json'
+
+      - name: Save JSON to cache
+        if: env.JSON_EXISTS == 'false'
+        uses: actions/cache@v3
+        with:
+          path: archivo.json
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Upload JSON file
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact
+          path: archivo.json
