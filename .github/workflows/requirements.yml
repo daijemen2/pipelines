@@ -12,11 +12,36 @@ jobs:
     name: Convert and upload text to JSON
     runs-on: ubuntu-latest
     steps:
+      - name: Set up cache key
+        id: cache-key
+        run: |
+          echo "CACHE_KEY=$(echo '{\"name\": \"pipelines\",\"activity\": 3,\"module\": 2,\"isRequired\": false}' | sha256sum | awk '{print $1}')" >> $GITHUB_ENV
+
+      - name: Restore JSON from cache
+        uses: actions/cache@v3
+        with:
+          path: archivo.json
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Check if JSON exists
+        id: json-exists
+        run: |
+          echo "JSON_EXISTS=$(test -f archivo.json && echo true || echo false)" >> $GITHUB_ENV
+
       - name: Convert to JSON
+        if: env.JSON_EXISTS == 'false'
         uses: devops-actions/json-to-file@v1.0.4
         with:
           json: '{"name": "pipelines","activity": 3,"module": 2,"isRequired": false}'
           filename: 'archivo.json'
+
+      - name: Save JSON to cache
+        if: env.JSON_EXISTS == 'false'
+        uses: actions/cache@v3
+        with:
+          path: archivo.json
+          key: ${{ env.CACHE_KEY }}
+
       - name: Upload JSON file
         uses: actions/upload-artifact@v4
         with:
