@@ -59,14 +59,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Create PDF folder
-        run: mkdir -p pdfs
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y wkhtmltopdf jq
 
-      - name: Generate PDF from URL (Marketplace Action)
-        uses: crazy-max/ghaction-wkhtmltopdf@v1
-        with:
-          urls: ${{ matrix.event.pages[0].content_urls.desktop.page }}
-          output: pdfs/${{ github.event.inputs.month || '01' }}-${{ github.event.inputs.day || '01' }}-${{ matrix.event.pages[0].title | replace(' ','_') }}.pdf
+      - name: Generate PDF from URL
+        run: |
+          MONTH=${{ github.event.inputs.month || '01' }}
+          DAY=${{ github.event.inputs.day || '01' }}
+          # Limpiar título para nombre de archivo seguro
+          TITLE=$(echo '${{ matrix.event }}' | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
+          URL=$(echo '${{ matrix.event }}' | jq -r '.pages[0].content_urls.desktop.page')
+          mkdir -p pdfs
+          OUTPUT="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
+          echo "Generating $OUTPUT from $URL"
+          wkhtmltopdf --quiet "$URL" "$OUTPUT"
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
