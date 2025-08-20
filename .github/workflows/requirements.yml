@@ -21,16 +21,13 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  generate_pdfs:
+  fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
       - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl jq
+        run: sudo apt-get update && sudo apt-get install -y curl jq
 
       - name: Set up cache
         id: cache
@@ -42,31 +39,41 @@ jobs:
             ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
 
       - name: Call On This Day API
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           LANGUAGE=${{ env.LANGUAGE }}
           MONTH=${{ github.event.inputs.month }}
           DAY=${{ github.event.inputs.day }}
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
-          echo "Calling API: $URL"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > cache/api_response.json
-      - name: Prepare PDFs directory
-        run: mkdir -p pdfs
 
-      - name: Generate PDFs using html-to-pdf-action
+      - name: Prepare matrix
+        id: set-matrix
         run: |
-          curl -sSL https://github.com/narthanaj/html-to-pdf-action/releases/latest/download/html-to-pdf-linux \
-            -o html-to-pdf && chmod +x html-to-pdf
+          MONTH=${{ github.event.inputs.month }}
+          DAY=${{ github.event.inputs.day }}
+          jq -c '.selected[]' cache/api_response.json | jq -s 'map({
+            title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
+            url: .pages[0].content_urls.desktop.page,
+            filename: "'"${MONTH}"'-'"${DAY}"'-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf"
+          })' > matrix.json
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
 
-          jq -c '.selected[]' cache/api_response.json | while read -r event; do
-            TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
-            URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
-            FILENAME="pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf"
-            echo "Generating PDF for: $TITLE"
-            ./html-to-pdf "$URL" "$FILENAME"
-          done
+  generate_pdfs:
+    needs: fetch_events
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
+    steps:
+      - name: Generate PDF
+        uses: narthanaj/html-to-pdf-action@v1
+        with:
+          source: ${{ matrix.url }}
+          output: pdfs/${{ matrix.filename }}
 
-      - name: Upload PDFs as Artifacts
+      - name: Upload PDF
         uses: actions/upload-artifact@v4
         with:
           name: historical-events-pdfs
