@@ -38,24 +38,23 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-
-          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/$MONTH/$DAY"
           echo "Calling API: $URL"
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > api_response.json
 
       - name: Create matrix for parallel PDF generation
         id: set_matrix
         run: |
-          EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json)
-          if [ -z "$EVENTS" ]; then
-            echo "No events found"
-            echo "matrix_json=[]" >> $GITHUB_OUTPUT
-            echo "events_length=0" >> $GITHUB_OUTPUT
-          else
-            MATRIX=$(echo "$EVENTS" | jq -s '.')
-            LENGTH=$(echo "$MATRIX" | jq 'length')
-            echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
-            echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
+          MATRIX_JSON="[]"
+          LENGTH=0
+          jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json | while read ev; do
+            ENCODED=$(echo "$ev" | base64 | tr -d '\n')
+            MATRIX_JSON=$(echo "$MATRIX_JSON" | jq --arg e "$ENCODED" '. + [$e]')
+            LENGTH=$((LENGTH + 1))
+          done
+          # Salida para jobs dependientes
+          echo "matrix_json=$MATRIX_JSON" >> $GITHUB_OUTPUT
+          echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
@@ -68,14 +67,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Install Node.js (para npx)
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Decode event and set variables
+        run: |
+          echo '${{ matrix.event }}' | base64 --decode > event.json
+          TITLE=$(jq -r '.title' event.json | sed 's/[^A-Za-z0-9_-]/_/g')
+          URL=$(jq -r '.url' event.json)
+          echo "TITLE=$TITLE" >> $GITHUB_ENV
+          echo "URL=$URL" >> $GITHUB_ENV
+          echo "MONTH=${{ github.event.inputs.month }}" >> $GITHUB_ENV
+          echo "DAY=${{ github.event.inputs.day }}" >> $GITHUB_ENV
+
       - name: Create pdfs folder
         run: mkdir -p pdfs
 
       - name: Generate PDF using Marketplace Action
         uses: wei/html-to-pdf-action@v1
         with:
-          url: ${{ matrix.event.url }}
-          outputFile: pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${{ matrix.event.title }}.pdf
+          url: ${{ env.URL }}
+          outputFile: pdfs/${{ env.MONTH }}-${{ env.DAY }}-${{ env.TITLE }}.pdf
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
