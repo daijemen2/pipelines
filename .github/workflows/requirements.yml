@@ -1,6 +1,11 @@
 name: On This Day API Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
     inputs:
       month:
@@ -19,28 +24,38 @@ jobs:
   fetch_and_generate:
     runs-on: ubuntu-latest
     steps:
+      # ✅ Checkout
       - name: Checkout
         uses: actions/checkout@v3
 
+      # ✅ Instalar dependencias
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq xargs
 
+      # ✅ Set month y day
       - name: Set month and day
         run: |
           echo "MONTH=${{ github.event.inputs.month }}" >> $GITHUB_ENV
           echo "DAY=${{ github.event.inputs.day }}" >> $GITHUB_ENV
 
+      # ✅ Set LANGUAGE env
+      - name: Set LANGUAGE env
+        run: echo "LANGUAGE=${{ secrets.LANGUAGE }}" >> $GITHUB_ENV
+
+      # ✅ Llamar a API
       - name: Fetch events from API
         run: |
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > api_response.json
 
+      # ✅ Preparar listado de eventos
       - name: Prepare event list
         run: |
           mkdir -p events
           jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json > events/list.json
 
+      # ✅ Generar PDFs en paralelo usando Action de Marketplace
       - name: Generate PDFs in parallel using Marketplace Action
         run: |
           mkdir -p pdfs
@@ -49,9 +64,10 @@ jobs:
             URL=$(echo {} | jq -r ".url")
             OUTPUT="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
             echo "Generating $OUTPUT from $URL"
-            # Usamos el Action de Marketplace como CLI seguro
             npx html-to-pdf-action --url "$URL" --output "$OUTPUT"
           '
+
+      # ✅ Subir PDFs como artefactos
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
