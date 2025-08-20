@@ -30,6 +30,9 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v3
 
+      - name: Install curl and jq
+        run: apk add --no-cache curl jq
+
       - name: Set up cache
         id: cache
         uses: actions/cache@v3
