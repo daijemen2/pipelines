@@ -21,15 +21,17 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  fetch_and_generate:
-    name: Fetch events and generate PDFs
+  fetch_events:
+    name: Fetch events from API
     runs-on: ubuntu-latest
+    outputs:
+      events_array: ${{ steps.prepare.outputs.events_array }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq wkhtmltopdf
+        run: sudo apt-get update && sudo apt-get install -y curl jq
 
       - name: Call On This Day API
         run: |
@@ -41,22 +43,33 @@ jobs:
           RESPONSE=$(curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL")
           echo "$RESPONSE" > api_response.json
 
-      - name: Generate PDFs
+      - name: Prepare events for matrix
+        id: prepare
         run: |
-          mkdir -p pdfs
-          MONTH=${{ github.event.inputs.month || '01' }}
-          DAY=${{ github.event.inputs.day || '01' }}
+          EVENTS=$(jq -c '.selected[]?' api_response.json | jq -s .)
+          echo "events_array=$EVENTS" >> $GITHUB_OUTPUT
 
-          jq -c '.selected[]?' api_response.json | while read -r event; do
-            TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
-            URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
-            FILENAME="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
-            echo "Generating $FILENAME from $URL"
-            wkhtmltopdf --quiet "$URL" "$FILENAME" || echo "Failed for $URL"
-          done
+  generate_pdfs:
+    needs: fetch_events
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        event: ${{ fromJSON(needs.fetch_events.outputs.events_array) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Create PDF folder
+        run: mkdir -p pdfs
+
+      - name: Generate PDF from URL (Marketplace Action)
+        uses: crazy-max/ghaction-wkhtmltopdf@v1
+        with:
+          urls: ${{ matrix.event.pages[0].content_urls.desktop.page }}
+          output: pdfs/${{ github.event.inputs.month || '01' }}-${{ github.event.inputs.day || '01' }}-${{ matrix.event.pages[0].title | replace(' ','_') }}.pdf
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
-          name: historical-events-pdfs
-          path: pdfs
+          name: historical-event-pdfs
+          path: pdfs/*.pdf
