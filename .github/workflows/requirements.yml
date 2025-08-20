@@ -1,11 +1,6 @@
 name: On This Day API Workflow
 
 on:
-  push:
-    branches:
-      - feature/*
-      - staging
-      - master
   workflow_dispatch:
     inputs:
       month:
@@ -21,9 +16,11 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  call_on_this_day_api:
-    name: Call On This Day API
+  fetch-events:
+    name: Fetch and Process Events
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -56,37 +53,27 @@ jobs:
                           "$URL")
           echo "$RESPONSE" > cache/api_response.json
 
-      - name: Extract URLs and Titles
-        id: extract
+      - name: Prepare matrix of events
+        id: set-matrix
         run: |
-          mkdir -p urls
-          jq -c '.selected[]' cache/api_response.json | while read -r event; do
-            TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
-            URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
-            FILENAME="${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf"
-            echo "$URL|$FILENAME" >> urls/list.txt
-          done
+          EVENTS=$(jq -c '[.selected[] | {title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")), url: .pages[0].content_urls.desktop.page}]' cache/api_response.json)
+          echo "matrix=$EVENTS" >> $GITHUB_OUTPUT
 
-      - name: Generate PDFs using Marketplace Action
-        uses: actions/github-script@v7
+  generate-pdfs:
+    name: Generate PDFs
+    needs: fetch-events
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        event: ${{ fromJson(needs.fetch-events.outputs.matrix) }}
+    steps:
+      - name: Generate PDF for ${{ matrix.event.title }}
+        uses: narthanaj/html-to-pdf-action@v1
         with:
-          script: |
-            const fs = require('fs');
-            const urls = fs.readFileSync('urls/list.txt', 'utf-8').trim().split('\n');
-            const jobs = urls.map((line, index) => {
-              const [url, filename] = line.split('|');
-              return {
-                jobId: `pdf_job_${index}`,
-                uses: 'narthanaj/html-to-pdf-action@v1',
-                with: {
-                  source: url,
-                  output: `pdfs/${filename}`
-                }
-              };
-            });
-            return jobs;
+          source: ${{ matrix.event.url }}
+          output: pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${{ matrix.event.title }}.pdf
 
-      - name: Upload PDFs as Artifacts
+      - name: Upload PDF
         uses: actions/upload-artifact@v4
         with:
           name: historical-events-pdfs
