@@ -28,10 +28,10 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v3
 
-      - name: Install dependencies (curl, jq, chromium)
+      - name: Install dependencies (curl, jq)
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl jq chromium-browser
+          sudo apt-get install -y curl jq
 
       - name: Set up cache
         id: cache
@@ -56,17 +56,20 @@ jobs:
                           "$URL")
           echo "$RESPONSE" > cache/api_response.json
 
-      - name: Parse and Generate PDFs (with Chromium Headless)
+      - name: Prepare list of URLs and filenames
         run: |
-          mkdir -p pdfs
+          mkdir -p urls
           jq -c '.selected[]' cache/api_response.json | while read -r event; do
             TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
             URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
-            echo "Processing: $TITLE -> $URL"
-            chromium-browser --headless --disable-gpu --no-sandbox \
-              --print-to-pdf="pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf" \
-              "$URL"
+            FILENAME="${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf"
+            echo "$FILENAME:$URL" >> urls/list.txt
           done
+
+      - name: Convert URLs to PDFs using Puppeteer Action
+        uses: marceloprado/puppeteer-html-to-pdf@v3
+        with:
+          args: urls/list.txt
 
       - name: Upload PDFs as Artifacts
         uses: actions/upload-artifact@v4
