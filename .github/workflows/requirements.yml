@@ -52,7 +52,6 @@ jobs:
             # Usamos el Action de Marketplace como CLI seguro
             npx html-to-pdf-action --url "$URL" --output "$OUTPUT"
           '
-
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
