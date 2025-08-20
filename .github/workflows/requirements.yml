@@ -57,7 +57,7 @@ jobs:
             map({
               title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
               url: .pages[0].content_urls.desktop.page,
-              filename: "\($month)-\($day)-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf"
+              filename: ($month + "-" + $day + "-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf")
             })
           ' > matrix.json
           echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
