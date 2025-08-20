@@ -21,72 +21,41 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  fetch_events:
-    name: Fetch Events from Wikipedia API
+  fetch_and_generate:
+    name: Fetch events and generate PDFs
     runs-on: ubuntu-latest
-    outputs:
-      events: ${{ steps.prepare.outputs.events }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
+        run: sudo apt-get update && sudo apt-get install -y curl jq wkhtmltopdf
 
       - name: Call On This Day API
-        id: fetch
         run: |
           LANGUAGE=${{ env.LANGUAGE }}
           MONTH=${{ github.event.inputs.month || '01' }}
           DAY=${{ github.event.inputs.day || '01' }}
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
-          RESPONSE=$(curl -s \
-                          -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-                          "$URL")
+          RESPONSE=$(curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL")
           echo "$RESPONSE" > api_response.json
 
-      - name: Prepare events list
-        id: prepare
+      - name: Generate PDFs
         run: |
+          mkdir -p pdfs
           MONTH=${{ github.event.inputs.month || '01' }}
           DAY=${{ github.event.inputs.day || '01' }}
-          EVENTS=$(jq -c --arg m "$MONTH" --arg d "$DAY" \
-            '[.selected[]? | {
-              title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
-              url: .pages[0].content_urls.desktop.page,
-              filename: "\($m)-\($d)-\(.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")).pdf"
-            }]' api_response.json)
 
-          if [ -z "$EVENTS" ] || [ "$EVENTS" = "null" ] || [ "$EVENTS" = "[]" ]; then
-            echo "⚠️ No events found, injecting dummy"
-            EVENTS='[{"title":"no_events","url":"https://example.com","filename":"dummy.pdf"}]'
-          fi
+          jq -c '.selected[]?' api_response.json | while read -r event; do
+            TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
+            URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
+            FILENAME="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
+            echo "Generating $FILENAME from $URL"
+            wkhtmltopdf --quiet "$URL" "$FILENAME" || echo "Failed for $URL"
+          done
 
-          echo "events=$EVENTS" >> $GITHUB_OUTPUT
-
-  generate_pdfs:
-    name: Generate PDFs for Each Event
-    needs: fetch_events
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        event: ${{ fromJson(needs.fetch_events.outputs.events) }}
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Debug events JSON
-        run: |
-          echo '${{ needs.fetch_events.outputs.events }}' > events.json
-          cat events.json
-
-      - name: Generate PDF
-        if: ${{ matrix.event.url != '' }}
-        uses: frostmark/action-pdf@v1
-        with:
-          url: ${{ matrix.event.url }}
-          outputFile: pdfs/${{ matrix.event.filename }}
-
-      - name: Upload PDFs as Artifacts
-        if: always()
+      - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
           name: historical-events-pdfs
