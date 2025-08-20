@@ -17,6 +17,9 @@ on:
         required: true
         default: '01'
 
+env:
+  LANGUAGE: ${{ secrets.LANGUAGE }}
+
 jobs:
   call_on_this_day_api:
     name: Call On This Day API
@@ -25,30 +28,40 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v3
 
+      - name: Set up cache
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: cache
+          key: ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
+          restore-keys: |
+            ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
+
       - name: Call On This Day API
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
+          LANGUAGE=${{ env.LANGUAGE }}
           MONTH=${{ github.event.inputs.month }}
           DAY=${{ github.event.inputs.day }}
-          URL="https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/all/${MONTH}/${DAY}"
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
           RESPONSE=$(curl -s \
                           -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
                           "$URL")
-          echo "API Response: $RESPONSE"
+          echo "$RESPONSE" > cache/api_response.json
 
-          # Save the response to a file
-          echo "$RESPONSE" > api_response.json
-
-          # Display the file content for inspection
-          echo "Saved API response to api_response.json"
-          cat api_response.json
-
-      - name: Parse and Inspect API Response
+      - name: Parse and Process API Response
         run: |
-          # Pretty-print the JSON response
-          jq . api_response.json
+          mkdir -p pdfs
+          jq -c '.selected[]' cache/api_response.json | while read -r event; do
+            TITLE=$(echo "$event" | jq -r '.title' | sed 's/ /_/g')
+            URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
+            echo "Processing: $TITLE -> $URL"
+            curl -s "https://api.html2pdf.app/v1/generate?url=$URL&apiKey=your_api_key" --output "pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf"
+          done
 
-          # Extract specific fields (e.g., the first "text" field in "selected")
-          TEXT=$(jq -r '.selected[0].text' api_response.json)
-          echo "Extracted Text: $TEXT"
-        shell: bash
+      - name: Upload PDFs as Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: historical-events-pdfs
+          path: pdfs
