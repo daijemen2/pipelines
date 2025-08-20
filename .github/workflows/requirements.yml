@@ -56,19 +56,21 @@ jobs:
         id: prepare
         run: |
           EVENTS=$(jq -c '.selected[]?' api_response.json)
-          MATRIX_JSON="[]"
-          for event in $EVENTS; do
-            ENCODED=$(echo "$event" | base64)
-            MATRIX_JSON=$(echo "$MATRIX_JSON" | jq --arg e "$ENCODED" '. + [$e]')
-          done
-          echo "events_matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+          MATRIX_ARRAY="[]"
+          while read -r event; do
+            ENCODED=$(echo "$event" | base64 | tr -d '\n')
+            MATRIX_ARRAY=$(echo "$MATRIX_ARRAY" | jq --arg e "$ENCODED" '. + [$e]')
+          done <<< "$EVENTS"
+          # Codificar todo el array final en Base64 para output seguro
+          MATRIX_BASE64=$(echo "$MATRIX_ARRAY" | base64 | tr -d '\n')
+          echo "events_matrix=$MATRIX_BASE64" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        event: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) }}
+        event: ${{ fromJSON(fromBase64(needs.fetch_events.outputs.events_matrix)) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
