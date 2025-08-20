@@ -59,6 +59,9 @@ jobs:
             EVENTS="[]"
           fi
 
+          # Normalizar a una sola línea para que GitHub no lo marque como secreto
+          EVENTS=$(echo "$EVENTS" | jq -c '.')
+
           echo "Final events JSON: $EVENTS"
           echo "events=$EVENTS" >> $GITHUB_OUTPUT
 
