@@ -28,7 +28,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v3
 
-      - name: Install dependencies (curl, jq)
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y curl jq
@@ -56,20 +56,35 @@ jobs:
                           "$URL")
           echo "$RESPONSE" > cache/api_response.json
 
-      - name: Prepare list of URLs and filenames
+      - name: Extract URLs and Titles
+        id: extract
         run: |
           mkdir -p urls
           jq -c '.selected[]' cache/api_response.json | while read -r event; do
             TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
             URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
             FILENAME="${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf"
-            echo "$FILENAME:$URL" >> urls/list.txt
+            echo "$URL|$FILENAME" >> urls/list.txt
           done
 
-      - name: Convert URLs to PDFs using Puppeteer Action
-        uses: marceloprado/puppeteer-html-to-pdf@v3
+      - name: Generate PDFs using Marketplace Action
+        uses: actions/github-script@v7
         with:
-          args: urls/list.txt
+          script: |
+            const fs = require('fs');
+            const urls = fs.readFileSync('urls/list.txt', 'utf-8').trim().split('\n');
+            const jobs = urls.map((line, index) => {
+              const [url, filename] = line.split('|');
+              return {
+                jobId: `pdf_job_${index}`,
+                uses: 'narthanaj/html-to-pdf-action@v1',
+                with: {
+                  source: url,
+                  output: `pdfs/${filename}`
+                }
+              };
+            });
+            return jobs;
 
       - name: Upload PDFs as Artifacts
         uses: actions/upload-artifact@v4
