@@ -21,54 +21,70 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  fetch_and_generate:
-    name: Fetch events and generate PDFs
+  fetch_events:
+    name: Fetch events
     runs-on: ubuntu-latest
+    outputs:
+      events_matrix: ${{ steps.prepare.outputs.events_matrix }}
+      month: ${{ steps.set_date.outputs.month }}
+      day: ${{ steps.set_date.outputs.day }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq wkhtmltopdf
+        run: sudo apt-get update && sudo apt-get install -y curl jq
 
       - name: Set month and day defaults
+        id: set_date
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
           if [ -z "$MONTH" ]; then MONTH="01"; fi
           if [ -z "$DAY" ]; then DAY="01"; fi
-          echo "MONTH=$MONTH" >> $GITHUB_ENV
-          echo "DAY=$DAY" >> $GITHUB_ENV
-          echo "Using MONTH=$MONTH and DAY=$DAY"
+          echo "month=$MONTH" >> $GITHUB_OUTPUT
+          echo "day=$DAY" >> $GITHUB_OUTPUT
 
       - name: Call On This Day API
         run: |
-          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${{ steps.set_date.outputs.month }}/${{ steps.set_date.outputs.day }}"
           echo "Calling API: $URL"
           RESPONSE=$(curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL")
           echo "$RESPONSE" > api_response.json
 
-      - name: Prepare events array
+      - name: Prepare matrix of events
         id: prepare
         run: |
-          EVENTS=$(jq -c '.selected[]?' api_response.json | jq -s .)
-          if [ -z "$EVENTS" ] || [ "$EVENTS" = "[]" ]; then
-            echo "No events found for this date, setting empty array"
-            EVENTS="[]"
-          fi
-          echo "$EVENTS" | base64 > events_base64.txt
-
-      - name: Generate PDFs
-        run: |
-          EVENTS=$(cat events_base64.txt | base64 --decode)
-          mkdir -p pdfs
-          echo "$EVENTS" | jq -c '.[]' | while read -r row; do
-            TITLE=$(echo "$row" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
-            URL=$(echo "$row" | jq -r '.pages[0].content_urls.desktop.page')
-            OUTPUT="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
-            echo "Generating $OUTPUT from $URL"
-            wkhtmltopdf --quiet "$URL" "$OUTPUT"
+          EVENTS=$(jq -c '.selected[]?' api_response.json)
+          MATRIX_JSON="[]"
+          for event in $EVENTS; do
+            ENCODED=$(echo "$event" | base64)
+            MATRIX_JSON=$(echo "$MATRIX_JSON" | jq --arg e "$ENCODED" '. + [$e]')
           done
+          echo "events_matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+
+  generate_pdfs:
+    needs: fetch_events
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        event: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y wkhtmltopdf jq
+
+      - name: Decode event and generate PDF
+        run: |
+          mkdir -p pdfs
+          EVENT_JSON=$(echo "${{ matrix.event }}" | base64 --decode)
+          TITLE=$(echo "$EVENT_JSON" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
+          URL=$(echo "$EVENT_JSON" | jq -r '.pages[0].content_urls.desktop.page')
+          OUTPUT="pdfs/${{ needs.fetch_events.outputs.month }}-${{ needs.fetch_events.outputs.day }}-${TITLE}.pdf"
+          echo "Generating $OUTPUT from $URL"
+          wkhtmltopdf --quiet "$URL" "$OUTPUT"
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
