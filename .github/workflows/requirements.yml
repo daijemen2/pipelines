@@ -21,72 +21,44 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  fetch_events:
-    name: Fetch events
+  fetch_and_generate:
+    name: Fetch events and generate PDFs
     runs-on: ubuntu-latest
-    outputs:
-      events_matrix: ${{ steps.prepare.outputs.events_matrix }}
-      month: ${{ steps.set_date.outputs.month }}
-      day: ${{ steps.set_date.outputs.day }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
+        run: sudo apt-get update && sudo apt-get install -y curl jq parallel
 
       - name: Set month and day defaults
-        id: set_date
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
           if [ -z "$MONTH" ]; then MONTH="01"; fi
           if [ -z "$DAY" ]; then DAY="01"; fi
-          echo "month=$MONTH" >> $GITHUB_OUTPUT
-          echo "day=$DAY" >> $GITHUB_OUTPUT
+          echo "MONTH=$MONTH" >> $GITHUB_ENV
+          echo "DAY=$DAY" >> $GITHUB_ENV
 
       - name: Call On This Day API
         run: |
-          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${{ steps.set_date.outputs.month }}/${{ steps.set_date.outputs.day }}"
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
           RESPONSE=$(curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL")
           echo "$RESPONSE" > api_response.json
 
-      - name: Prepare matrix of events
-        id: prepare
-        run: |
-          EVENTS=$(jq -c '.selected[]?' api_response.json)
-          MATRIX_ARRAY="[]"
-          while read -r event; do
-            ENCODED=$(echo "$event" | base64 | tr -d '\n')
-            MATRIX_ARRAY=$(echo "$MATRIX_ARRAY" | jq --arg e "$ENCODED" '. + [$e]')
-          done <<< "$EVENTS"
-          # Codificar todo el array final en Base64 para output seguro
-          MATRIX_BASE64=$(echo "$MATRIX_ARRAY" | base64 | tr -d '\n')
-          echo "events_matrix=$MATRIX_BASE64" >> $GITHUB_OUTPUT
-
-  generate_pdfs:
-    needs: fetch_events
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        event: ${{ fromJSON(fromBase64(needs.fetch_events.outputs.events_matrix)) }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y wkhtmltopdf jq
-
-      - name: Decode event and generate PDF
+      - name: Generate PDFs in parallel using Marketplace Action
         run: |
           mkdir -p pdfs
-          EVENT_JSON=$(echo "${{ matrix.event }}" | base64 --decode)
-          TITLE=$(echo "$EVENT_JSON" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
-          URL=$(echo "$EVENT_JSON" | jq -r '.pages[0].content_urls.desktop.page')
-          OUTPUT="pdfs/${{ needs.fetch_events.outputs.month }}-${{ needs.fetch_events.outputs.day }}-${TITLE}.pdf"
-          echo "Generating $OUTPUT from $URL"
-          wkhtmltopdf --quiet "$URL" "$OUTPUT"
+          jq -c '.selected[]?' api_response.json | \
+          parallel -j 4 --halt soon,fail=1 '
+            TITLE=$(echo {} | jq -r ".pages[0].title" | sed "s/[^A-Za-z0-9_-]/_/g")
+            URL=$(echo {} | jq -r ".pages[0].content_urls.desktop.page")
+            OUTPUT="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
+            echo "Generating $OUTPUT from $URL"
+            # Llamada al Action de Marketplace como CLI (ejemplo con wei/html-to-pdf-action)
+            npx html-to-pdf-action --url "$URL" --output "$OUTPUT"
+          '
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
