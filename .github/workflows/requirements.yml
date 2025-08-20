@@ -36,7 +36,7 @@ jobs:
       - name: Fetch events from API
         id: fetch
         run: |
-          LANGUAGE="${LANGUAGE}"
+          LANGUAGE="${LANGUAGE:-en}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
 
@@ -47,23 +47,23 @@ jobs:
       - name: Create matrix for parallel PDF generation
         id: set_matrix
         run: |
-          EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json)
+          EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json || echo '')
           
           if [ -z "$EVENTS" ]; then
-            echo "No events found, using empty matrix"
-            echo "matrix_json=[]" >> $GITHUB_OUTPUT
-            echo "events_length=0" >> $GITHUB_OUTPUT
+            echo "No events found, using dummy matrix"
+            MATRIX='[{"title":"no_event","url":"https://example.com"}]'
+            LENGTH=1
           else
             MATRIX=$(echo "$EVENTS" | jq -s '.')
-            LENGTH=$(echo "$MATRIX" | jq 'length')
-            echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
-            echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
+            LENGTH=$(echo "$MATRIX" | jq '. | length')
           fi
+
+          echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
+          echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
-    if: ${{ needs.fetch_events.outputs.events_length != '0' }}
     strategy:
       matrix:
         event: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) }}
