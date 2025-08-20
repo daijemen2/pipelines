@@ -53,7 +53,7 @@ jobs:
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
-    if: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) != [] }}
+    if: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) && fromJSON(needs.fetch_events.outputs.events_matrix) | length > 0 }}
     strategy:
       matrix:
         event: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) }}
