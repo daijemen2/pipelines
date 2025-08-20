@@ -36,7 +36,9 @@ jobs:
       - name: Fetch events from API
         id: fetch
         run: |
-          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${{ github.event.inputs.month }}/${{ github.event.inputs.day }}"
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > api_response.json
 
@@ -45,7 +47,7 @@ jobs:
         run: |
           EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json)
           if [ -z "$EVENTS" ]; then
-            echo "No events found, skipping PDF generation"
+            echo "No events found"
             echo "matrix_json=[]" >> $GITHUB_OUTPUT
             echo "events_length=0" >> $GITHUB_OUTPUT
           else
@@ -67,8 +69,8 @@ jobs:
 
       - name: Set TITLE and URL
         run: |
-          TITLE=$(echo "${{ matrix.event }}" | jq -r '.title' | sed 's/[^A-Za-z0-9_-]/_/g')
-          URL=$(echo "${{ matrix.event }}" | jq -r '.url')
+          TITLE=$(echo '${{ matrix.event }}' | jq -r '.title' | sed 's/[^A-Za-z0-9_-]/_/g')
+          URL=$(echo '${{ matrix.event }}' | jq -r '.url')
           echo "TITLE=$TITLE" >> $GITHUB_ENV
           echo "URL=$URL" >> $GITHUB_ENV
 
