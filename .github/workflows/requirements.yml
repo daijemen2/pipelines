@@ -25,7 +25,7 @@ jobs:
     name: Call On This Day API
     runs-on: ubuntu-latest
     container:
-      image: openlabs/docker-wkhtmltopdf:latest
+      image: madnight/docker-alpine-wkhtmltopdf:latest
     steps:
       - name: Check out code
         uses: actions/checkout@v3
