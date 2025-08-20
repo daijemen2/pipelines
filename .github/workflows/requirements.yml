@@ -29,26 +29,21 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      - name: Set up cache
-        id: cache
-        uses: actions/cache@v3
-        with:
-          path: cache
-          key: ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
-          restore-keys: |
-            ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
-
-      - name: Validate API response or call again
+      - name: Call On This Day API
         run: |
+          LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          LANGUAGE="${{ env.LANGUAGE }}"
-          if [ ! -s cache/api_response.json ] || ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
-            echo "API response missing or invalid. Re-fetching..."
-            URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
-            curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > cache/api_response.json
-          else
-            echo "Valid API response found in cache."
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
+          echo "Calling API: $URL"
+          mkdir -p cache
+          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > cache/api_response.json
+
+      - name: Validate API response
+        run: |
+          if ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
+            echo "API response is empty or invalid."
+            exit 1
           fi
 
       - name: Prepare matrix
@@ -56,14 +51,14 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          jq -c '.selected[]' cache/api_response.json | jq -s --arg month "$MONTH" --arg day "$DAY" '
-            map({
+          MATRIX=$(jq -c --arg month "$MONTH" --arg day "$DAY" '
+            .selected | map({
               title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
               url: .pages[0].content_urls.desktop.page,
               filename: ($month + "-" + $day + "-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf")
             })
-          ' > matrix.json
-          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
+          ' cache/api_response.json)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
