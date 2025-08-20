@@ -38,15 +38,18 @@ jobs:
           restore-keys: |
             ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
 
-      - name: Call On This Day API
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Validate API response or call again
         run: |
-          LANGUAGE=${{ env.LANGUAGE }}
-          MONTH=${{ github.event.inputs.month }}
-          DAY=${{ github.event.inputs.day }}
-          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
-          mkdir -p cache
-          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > cache/api_response.json
+          if [ ! -s cache/api_response.json ] || ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
+            echo "API response missing or invalid. Re-fetching..."
+            LANGUAGE=${{ env.LANGUAGE }}
+            MONTH=${{ github.event.inputs.month }}
+            DAY=${{ github.event.inputs.day }}
+            URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
+            curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > cache/api_response.json
+          else
+            echo "Valid API response found in cache."
+          fi
 
       - name: Prepare matrix
         id: set-matrix
