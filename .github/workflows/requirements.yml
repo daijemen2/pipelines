@@ -18,7 +18,7 @@ on:
         default: '01'
 
 env:
-  LANGUAGE: ${{ secrets.LANGUAGE }}
+  LANGUAGE: ${{ secrets.LANGUAGE }}  # Por ejemplo "en"
 
 jobs:
   fetch_events:
@@ -31,39 +31,47 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
 
       - name: Fetch events from API
         id: fetch
         run: |
-          LANGUAGE="${LANGUAGE:-en}"
+          LANGUAGE="${LANGUAGE}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-
           URL="https://api.wikimedia.org/feed/v1/wikipedia/$LANGUAGE/onthisday/selected/$MONTH/$DAY"
-          echo "Calling API: $URL"
+          echo "=== API URL ==="
+          echo "$URL"
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > api_response.json
+          echo "=== API RESPONSE SAMPLE ==="
+          head -n 20 api_response.json
 
       - name: Create matrix for parallel PDF generation
         id: set_matrix
         run: |
-          EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json || echo '')
-          
+          EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json)
+          echo "=== EVENTS RAW ==="
+          echo "$EVENTS"
+
           if [ -z "$EVENTS" ]; then
-            echo "No events found, using dummy matrix"
-            MATRIX='[{"title":"no_event","url":"https://example.com"}]'
-            LENGTH=1
+            echo "No events found, using empty matrix"
+            echo "matrix_json=[]" >> $GITHUB_OUTPUT
+            echo "events_length=0" >> $GITHUB_OUTPUT
           else
             MATRIX=$(echo "$EVENTS" | jq -s '.')
-            LENGTH=$(echo "$MATRIX" | jq '. | length')
+            LENGTH=$(echo "$MATRIX" | jq 'length')
+            echo "=== MATRIX JSON ==="
+            echo "$MATRIX"
+            echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
+            echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
           fi
-
-          echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
-          echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
+    if: ${{ needs.fetch_events.outputs.events_length != '0' }}
     strategy:
       matrix:
         event: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) }}
@@ -73,10 +81,15 @@ jobs:
 
       - name: Set TITLE and URL
         run: |
+          echo "=== MATRIX EVENT ==="
+          echo '${{ matrix.event }}'
           TITLE=$(echo '${{ matrix.event }}' | jq -r '.title' | sed 's/[^A-Za-z0-9_-]/_/g')
           URL=$(echo '${{ matrix.event }}' | jq -r '.url')
           echo "TITLE=$TITLE" >> $GITHUB_ENV
           echo "URL=$URL" >> $GITHUB_ENV
+          echo "=== DEBUG VARIABLES ==="
+          echo "TITLE=$TITLE"
+          echo "URL=$URL"
 
       - name: Create pdfs folder
         run: mkdir -p pdfs
