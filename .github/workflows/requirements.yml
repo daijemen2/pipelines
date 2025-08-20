@@ -44,20 +44,16 @@ jobs:
         run: |
           EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json)
           if [ -z "$EVENTS" ]; then
-            echo "No events found, using dummy matrix"
-            MATRIX='[{"title":"no_event","url":"https://example.com"}]'
+            echo "No events found, skipping PDF generation"
+            echo "matrix_json=[]" >> $GITHUB_OUTPUT
           else
-            MATRIX="[]"
-            for ev in $EVENTS; do
-              ENCODED=$(echo "$ev" | base64)
-              MATRIX=$(echo "$MATRIX" | jq --arg e "$ENCODED" '. + [$e]')
-            done
-          fi
-          echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
+            MATRIX=$(echo "$EVENTS" | jq -s '.')
+            echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
+    if: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) != [] }}
     strategy:
       matrix:
         event: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) }}
@@ -65,18 +61,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Decode event data
-        id: decode
+      - name: Set TITLE and URL
         run: |
-          EVENT=$(echo "${{ matrix.event }}" | base64 --decode)
-          TITLE=$(echo "$EVENT" | jq -r '.title' | sed 's/[^A-Za-z0-9_-]/_/g')
-          URL=$(echo "$EVENT" | jq -r '.url')
+          TITLE=$(echo "${{ matrix.event }}" | jq -r '.title' | sed 's/[^A-Za-z0-9_-]/_/g')
+          URL=$(echo "${{ matrix.event }}" | jq -r '.url')
           echo "TITLE=$TITLE" >> $GITHUB_ENV
           echo "URL=$URL" >> $GITHUB_ENV
-
-      - name: Skip dummy events
-        if: ${{ env.TITLE == 'no_event' }}
-        run: echo "No real events to process, skipping PDF generation" && exit 0
 
       - name: Create pdfs folder
         run: mkdir -p pdfs
