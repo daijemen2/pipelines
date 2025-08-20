@@ -1,22 +1,3 @@
-name: OnThisDayAPI
-
-on:
-  push:
-    branches:
-      - feature/*
-      - staging
-      - master
-  workflow_dispatch:
-    inputs:
-      month:
-        description: "Month in MM format"
-        required: true
-        default: "01"
-      day:
-        description: "Day in DD format"
-        required: true
-        default: "01"
-
 jobs:
   call_on_this_day_api:
     name: Call On This Day API
@@ -32,3 +13,10 @@ jobs:
                           -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
                           "$URL")
           echo "API Response: $RESPONSE"
+          
+          # Guardar la respuesta en un archivo
+          echo "$RESPONSE" > api_response.json
+          
+          # Mostrar el contenido del archivo para inspección
+          echo "Saved API response to api_response.json"
+          cat api_response.json
