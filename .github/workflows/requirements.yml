@@ -24,14 +24,14 @@ jobs:
   call_on_this_day_api:
     name: Call On This Day API
     runs-on: ubuntu-latest
-    container:
-      image: madnight/docker-alpine-wkhtmltopdf:latest
     steps:
       - name: Check out code
         uses: actions/checkout@v3
 
-      - name: Install curl and jq
-        run: apk add --no-cache curl jq
+      - name: Install dependencies (curl, jq, chromium)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq chromium-browser
 
       - name: Set up cache
         id: cache
@@ -56,14 +56,16 @@ jobs:
                           "$URL")
           echo "$RESPONSE" > cache/api_response.json
 
-      - name: Parse and Generate PDFs
+      - name: Parse and Generate PDFs (with Chromium Headless)
         run: |
           mkdir -p pdfs
           jq -c '.selected[]' cache/api_response.json | while read -r event; do
             TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
             URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
             echo "Processing: $TITLE -> $URL"
-            wkhtmltopdf "$URL" "pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf"
+            chromium-browser --headless --disable-gpu --no-sandbox \
+              --print-to-pdf="pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf" \
+              "$URL"
           done
 
       - name: Upload PDFs as Artifacts
