@@ -47,12 +47,17 @@ jobs:
         id: prepare
         run: |
           EVENTS=$(jq -c '.selected[]?' api_response.json | jq -s .)
+          if [ "$EVENTS" = "[]" ] || [ -z "$EVENTS" ]; then
+            echo "No events found for this date, setting empty array"
+            EVENTS="[]"
+          fi
           echo "events_array<<EOF" >> $GITHUB_OUTPUT
           echo "$EVENTS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
+    if: needs.fetch_events.outputs.events_array != '[]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
