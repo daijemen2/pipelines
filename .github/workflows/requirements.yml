@@ -24,23 +24,19 @@ jobs:
   fetch_and_generate:
     runs-on: ubuntu-latest
     steps:
-      # ✅ Checkout
+      # ✅ Checkout del repositorio
       - name: Checkout
         uses: actions/checkout@v3
 
-      # ✅ Instalar dependencias
+      # ✅ Instalar dependencias necesarias
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq xargs
+        run: sudo apt-get update && sudo apt-get install -y curl jq
 
       # ✅ Set month y day
       - name: Set month and day
         run: |
           echo "MONTH=${{ github.event.inputs.month }}" >> $GITHUB_ENV
           echo "DAY=${{ github.event.inputs.day }}" >> $GITHUB_ENV
-
-      # ✅ Set LANGUAGE env
-      - name: Set LANGUAGE env
-        run: echo "LANGUAGE=${{ secrets.LANGUAGE }}" >> $GITHUB_ENV
 
       # ✅ Llamar a API
       - name: Fetch events from API
