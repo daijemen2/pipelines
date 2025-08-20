@@ -24,6 +24,8 @@ jobs:
   call_on_this_day_api:
     name: Call On This Day API
     runs-on: ubuntu-latest
+    container:
+      image: openlabs/docker-wkhtmltopdf:latest
     steps:
       - name: Check out code
         uses: actions/checkout@v3
@@ -50,9 +52,6 @@ jobs:
                           -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
                           "$URL")
           echo "$RESPONSE" > cache/api_response.json
-
-      - name: Install wkhtmltopdf
-        run: sudo apt-get update && sudo apt-get install -y wkhtmltopdf
 
       - name: Parse and Generate PDFs
         run: |
