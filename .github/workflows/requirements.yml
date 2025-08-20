@@ -24,46 +24,35 @@ jobs:
   fetch_and_generate:
     runs-on: ubuntu-latest
     steps:
-      # ✅ Checkout del repositorio
       - name: Checkout
         uses: actions/checkout@v3
 
-      # ✅ Instalar dependencias necesarias
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      # ✅ Set month y day
       - name: Set month and day
         run: |
           echo "MONTH=${{ github.event.inputs.month }}" >> $GITHUB_ENV
           echo "DAY=${{ github.event.inputs.day }}" >> $GITHUB_ENV
 
-      # ✅ Llamar a API
       - name: Fetch events from API
         run: |
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
-          echo "Calling API: $URL"
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > api_response.json
 
-      # ✅ Preparar listado de eventos
       - name: Prepare event list
         run: |
-          mkdir -p events
+          mkdir -p pdfs
           jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' api_response.json > events/list.json
 
-      # ✅ Generar PDFs en paralelo usando Action de Marketplace
-      - name: Generate PDFs in parallel using Marketplace Action
-        run: |
-          mkdir -p pdfs
-          cat events/list.json | xargs -I {} -P 4 bash -c '
-            TITLE=$(echo {} | jq -r ".title" | sed "s/[^A-Za-z0-9_-]/_/g")
-            URL=$(echo {} | jq -r ".url")
-            OUTPUT="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
-            echo "Generating $OUTPUT from $URL"
-            npx html-to-pdf-action --url "$URL" --output "$OUTPUT"
-          '
+      # ✅ Generar PDFs usando Action de Marketplace correctamente
+      - name: Generate PDFs from URLs
+        uses: wei/html-to-pdf-action@v1
+        with:
+          urls-file: events/list.json      # Pasamos el JSON con "url" y "title"
+          output-folder: pdfs
+          filename-template: '${{ env.MONTH }}-${{ env.DAY }}-${title}.pdf' # title se toma de cada objeto
 
-      # ✅ Subir PDFs como artefactos
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
