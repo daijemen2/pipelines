@@ -36,7 +36,6 @@ jobs:
       - name: Fetch events from API
         id: fetch
         run: |
-          # Variables seguras de Bash
           LANGUAGE="${LANGUAGE:-en}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
