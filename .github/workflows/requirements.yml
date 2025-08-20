@@ -1,6 +1,11 @@
 name: On This Day API Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
     inputs:
       month:
@@ -37,3 +42,13 @@ jobs:
           # Display the file content for inspection
           echo "Saved API response to api_response.json"
           cat api_response.json
+
+      - name: Parse and Inspect API Response
+        run: |
+          # Pretty-print the JSON response
+          jq . api_response.json
+
+          # Extract specific fields (e.g., the first "text" field in "selected")
+          TEXT=$(jq -r '.selected[0].text' api_response.json)
+          echo "Extracted Text: $TEXT"
+        shell: bash
