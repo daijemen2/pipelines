@@ -21,79 +21,55 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  fetch_events:
+  call_on_this_day_api:
+    name: Call On This Day API
     runs-on: ubuntu-latest
-    outputs:
-      matrix_json: ${{ steps.set_matrix.outputs.matrix_json }}
-      events_length: ${{ steps.set_matrix.outputs.events_length }}
     steps:
-      - name: Checkout code
+      - name: Check out code
         uses: actions/checkout@v3
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
+      - name: Install dependencies (curl, jq, chromium)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq chromium-browser
+
+      - name: Set up cache
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: cache
+          key: ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
+          restore-keys: |
+            ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
 
       - name: Call On This Day API
-        id: call_api
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          mkdir -p cache
+          LANGUAGE=${{ env.LANGUAGE }}
           MONTH=${{ github.event.inputs.month }}
           DAY=${{ github.event.inputs.day }}
-          LANGUAGE=${{ env.LANGUAGE }}
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
-          RESPONSE=$(curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL")
+          mkdir -p cache
+          RESPONSE=$(curl -s \
+                          -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
+                          "$URL")
           echo "$RESPONSE" > cache/api_response.json
 
-      - name: Create matrix JSON for parallel PDFs
-        id: set_matrix
+      - name: Parse and Generate PDFs (with Chromium Headless)
         run: |
-          EVENTS=$(jq -c '.selected[]? | {title: .pages[0].title, url: .pages[0].content_urls.desktop.page}' cache/api_response.json)
-          echo "=== EVENTS RAW ==="
-          echo "$EVENTS"
-
-          if [ -z "$EVENTS" ]; then
-            echo "No events found, skipping matrix generation"
-            echo 'matrix_json=[]' >> $GITHUB_OUTPUT
-            echo "events_length=0" >> $GITHUB_OUTPUT
-          else
-            MATRIX=$(echo "$EVENTS" | jq -s '.')
-            LENGTH=$(echo "$MATRIX" | jq 'length')
-            echo "=== MATRIX JSON ==="
-            echo "$MATRIX"
-            echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
-            echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
-
-  generate_pdfs:
-    needs: fetch_events
-    runs-on: ubuntu-latest
-    if: ${{ needs.fetch_events.outputs.events_length != '0' }}
-    strategy:
-      matrix:
-        event: ${{ fromJSON(needs.fetch_events.outputs.matrix_json) }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set TITLE and URL
-        run: |
-          echo "Matrix event raw: ${{ matrix.event }}"
-          TITLE=$(echo '${{ matrix.event }}' | jq -r '.title' | sed 's/[^A-Za-z0-9_-]/_/g')
-          URL=$(echo '${{ matrix.event }}' | jq -r '.url')
-          echo "TITLE=$TITLE" >> $GITHUB_ENV
-          echo "URL=$URL" >> $GITHUB_ENV
-
-      - name: Create pdfs folder
-        run: mkdir -p pdfs
-
-      - name: Generate PDF using Marketplace Action
-        uses: fifsky/html-to-pdf-action@master
-        with:
-          url: ${{ env.URL }}
-          outputFile: pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${{ env.TITLE }}.pdf
+          mkdir -p pdfs
+          jq -c '.selected[]' cache/api_response.json | while read -r event; do
+            TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
+            URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
+            echo "Processing: $TITLE -> $URL"
+            chromium-browser --headless --disable-gpu --no-sandbox \
+              --print-to-pdf="pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf" \
+              "$URL"
+          done
 
       - name: Upload PDFs as Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: historical-events-pdfs
-          path: pdfs/*.pdf
+          path: pdfs
