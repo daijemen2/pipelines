@@ -47,7 +47,9 @@ jobs:
         id: prepare
         run: |
           EVENTS=$(jq -c '.selected[]?' api_response.json | jq -s .)
-          echo "events_array=$EVENTS" >> $GITHUB_OUTPUT
+          echo "events_array<<EOF" >> $GITHUB_OUTPUT
+          echo "$EVENTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
