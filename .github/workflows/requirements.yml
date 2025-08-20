@@ -51,13 +51,15 @@ jobs:
       - name: Prepare matrix
         id: set-matrix
         run: |
-          MONTH=${{ github.event.inputs.month }}
-          DAY=${{ github.event.inputs.day }}
-          jq -c '.selected[]' cache/api_response.json | jq -s 'map({
-            title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
-            url: .pages[0].content_urls.desktop.page,
-            filename: "'"${MONTH}"'-'"${DAY}"'-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf"
-          })' > matrix.json
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
+          jq -c '.selected[]' cache/api_response.json | jq -s --arg month "$MONTH" --arg day "$DAY" '
+            map({
+              title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
+              url: .pages[0].content_urls.desktop.page,
+              filename: "\($month)-\($day)-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf"
+            })
+          ' > matrix.json
           echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
 
   generate_pdfs:
