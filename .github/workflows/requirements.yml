@@ -54,9 +54,7 @@ jobs:
       - name: Prepare matrix
         id: set-matrix
         run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          jq -c '.selected[]' cache/api_response.json | jq -s --arg month "$MONTH" --arg day "$DAY" '
+          jq -c '.selected[]' cache/api_response.json | jq -s --arg month "${{ github.event.inputs.month }}" --arg day "${{ github.event.inputs.day }}" '
             map({
               title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
               url: .pages[0].content_urls.desktop.page,
