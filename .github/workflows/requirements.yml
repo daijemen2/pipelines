@@ -1,6 +1,11 @@
 name: On This Day API Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
     inputs:
       month:
@@ -29,8 +34,8 @@ jobs:
         id: fetch
         run: |
           LANGUAGE=${{ env.LANGUAGE }}
-          MONTH=${{ github.event.inputs.month }}
-          DAY=${{ github.event.inputs.day }}
+          MONTH=${{ github.event.inputs.month || '01' }}
+          DAY=${{ github.event.inputs.day || '01' }}
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
           RESPONSE=$(curl -s \
@@ -41,17 +46,26 @@ jobs:
       - name: Prepare events list
         id: prepare
         run: |
-          MONTH=${{ github.event.inputs.month }}
-          DAY=${{ github.event.inputs.day }}
-          # Construir una lista de objetos {title,url}
+          MONTH=${{ github.event.inputs.month || '01' }}
+          DAY=${{ github.event.inputs.day || '01' }}
           EVENTS=$(jq -c --arg m "$MONTH" --arg d "$DAY" \
-            '[.selected[] | {title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")), url: .pages[0].content_urls.desktop.page, filename: "\($m)-\($d)-\(.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")).pdf"}]' api_response.json)
-          
+            '[.selected[]? | {
+              title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
+              url: .pages[0].content_urls.desktop.page,
+              filename: "\($m)-\($d)-\(.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")).pdf"
+            }]' api_response.json)
+
+          if [ -z "$EVENTS" ] || [ "$EVENTS" = "null" ]; then
+            EVENTS="[]"
+          fi
+
+          echo "Final events JSON: $EVENTS"
           echo "events=$EVENTS" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     name: Generate PDFs for Each Event
     needs: fetch_events
+    if: ${{ needs.fetch_events.outputs.events != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
