@@ -42,7 +42,6 @@ jobs:
             ${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
 
       - name: Call On This Day API
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           LANGUAGE=${{ env.LANGUAGE }}
           MONTH=${{ github.event.inputs.month }}
@@ -50,37 +49,22 @@ jobs:
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
           mkdir -p cache
-          RESPONSE=$(curl -s \
-                          -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-                          "$URL")
-          echo "$RESPONSE" > cache/api_response.json
-
+          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > cache/api_response.json
       - name: Prepare PDFs directory
         run: mkdir -p pdfs
 
-      - name: Generate PDFs using Marketplace Action
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const { execSync } = require('child_process');
-            const data = JSON.parse(fs.readFileSync('cache/api_response.json', 'utf-8'));
-            fs.mkdirSync('pdfs', { recursive: true });
+      - name: Generate PDFs using html-to-pdf-action
+        run: |
+          curl -sSL https://github.com/narthanaj/html-to-pdf-action/releases/latest/download/html-to-pdf-linux \
+            -o html-to-pdf && chmod +x html-to-pdf
 
-            for (const event of data.selected) {
-              const page = event.pages?.[0];
-              if (!page) continue;
-
-              const title = page.title.replace(/[^A-Za-z0-9_-]/g, '_');
-              const url = page.content_urls.desktop.page;
-              const filename = `pdfs/${process.env.MONTH}-${process.env.DAY}-${title}.pdf`;
-
-              console.log(`Generating PDF for: ${title}`);
-              execSync(`npx html-to-pdf-cli "${url}" "${filename}"`);
-            }
-        env:
-          MONTH: ${{ github.event.inputs.month }}
-          DAY: ${{ github.event.inputs.day }}
+          jq -c '.selected[]' cache/api_response.json | while read -r event; do
+            TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
+            URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
+            FILENAME="pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf"
+            echo "Generating PDF for: $TITLE"
+            ./html-to-pdf "$URL" "$FILENAME"
+          done
 
       - name: Upload PDFs as Artifacts
         uses: actions/upload-artifact@v4
