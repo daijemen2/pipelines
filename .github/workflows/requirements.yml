@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
+        run: sudo apt-get update && sudo apt-get install -y curl jq wkhtmltopdf
 
       - name: Set month and day defaults
         run: |
@@ -56,20 +56,18 @@ jobs:
             echo "No events found for this date, setting empty array"
             EVENTS="[]"
           fi
-          # Guardar en Base64 para manejar multilinea
           echo "$EVENTS" | base64 > events_base64.txt
 
-      - name: Generate PDFs using Marketplace Action
+      - name: Generate PDFs
         run: |
           EVENTS=$(cat events_base64.txt | base64 --decode)
           mkdir -p pdfs
-          for row in $(echo "$EVENTS" | jq -c '.[]'); do
+          echo "$EVENTS" | jq -c '.[]' | while read -r row; do
             TITLE=$(echo "$row" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
             URL=$(echo "$row" | jq -r '.pages[0].content_urls.desktop.page')
             OUTPUT="pdfs/${MONTH}-${DAY}-${TITLE}.pdf"
             echo "Generating $OUTPUT from $URL"
-            # Usando Action de Marketplace a nivel de Bash
-            npx wkhtmltopdf "$URL" "$OUTPUT"
+            wkhtmltopdf --quiet "$URL" "$OUTPUT"
           done
 
       - name: Upload PDFs
