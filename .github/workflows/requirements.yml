@@ -56,25 +56,30 @@ jobs:
                           "$URL")
           echo "$RESPONSE" > cache/api_response.json
 
-      - name: Download HTML and Convert to PDF
+      - name: Generate PDFs with frostmark/action-pdf
         run: |
-          mkdir -p pdfs htmls
+          mkdir -p pdfs
           jq -c '.selected[]' cache/api_response.json | while read -r event; do
             TITLE=$(echo "$event" | jq -r '.pages[0].title' | sed 's/[^A-Za-z0-9_-]/_/g')
             URL=$(echo "$event" | jq -r '.pages[0].content_urls.desktop.page')
-            echo "Downloading HTML for: $TITLE -> $URL"
-            curl -s "$URL" -o "htmls/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.html"
-          done
+            echo "Processing: $TITLE -> $URL"
 
-      - name: Convert all HTMLs to PDFs
-        uses: LukaszLapaj/html-to-pdf-action@master
-        with:
-          htmlFile: htmls
-          outputFile: pdfs
-          pdfOptions: '{"format": "A4", "margin": {"top": "10mm", "left": "10mm", "right": "10mm", "bottom": "10mm"}}'
+            # Ejecutar el Action de marketplace en cada iteración
+            echo "name: Generate PDF $TITLE" > temp-action.yml
+            echo "on: workflow_dispatch" >> temp-action.yml
+            echo "jobs:" >> temp-action.yml
+            echo "  pdf_job:" >> temp-action.yml
+            echo "    runs-on: ubuntu-latest" >> temp-action.yml
+            echo "    steps:" >> temp-action.yml
+            echo "      - name: Convert URL to PDF" >> temp-action.yml
+            echo "        uses: frostmark/action-pdf@v1" >> temp-action.yml
+            echo "        with:" >> temp-action.yml
+            echo "          url: \"$URL\"" >> temp-action.yml
+            echo "          outputFile: \"pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${TITLE}.pdf\"" >> temp-action.yml
+          done
 
       - name: Upload PDFs as Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: historical-events-pdfs
-          path: pdfsaction pdf
+          path: pdfs
