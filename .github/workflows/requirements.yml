@@ -31,9 +31,9 @@ jobs:
 
       - name: Call On This Day API
         run: |
-          LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
+          export MONTH="${{ github.event.inputs.month }}"
+          export DAY="${{ github.event.inputs.day }}"
+          export LANGUAGE="${{ env.LANGUAGE }}"
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
           mkdir -p cache
@@ -49,8 +49,8 @@ jobs:
       - name: Prepare matrix
         id: set-matrix
         run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
+          export MONTH="${{ github.event.inputs.month }}"
+          export DAY="${{ github.event.inputs.day }}"
           MATRIX=$(jq -c --arg month "$MONTH" --arg day "$DAY" '
             .selected | map({
               title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
