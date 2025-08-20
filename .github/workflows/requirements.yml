@@ -59,22 +59,36 @@ jobs:
             EVENTS="[]"
           fi
 
-          # Normalizar a una sola línea para que GitHub no lo marque como secreto
           EVENTS=$(echo "$EVENTS" | jq -c '.')
-
           echo "Final events JSON: $EVENTS"
           echo "events=$EVENTS" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     name: Generate PDFs for Each Event
     needs: fetch_events
+    if: ${{ needs.fetch_events.outputs.events != '[]' && needs.fetch_events.outputs.events != '' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        event: ${{ fromJson(needs.fetch_events.outputs.events || '[]') }}
+        event: ${{ fromJson(needs.fetch_events.outputs.events) }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
 
       - name: Debug events JSON
         run: |
+          echo '${{ needs.fetch_events.outputs.events }}' > events.json
+          echo "Events content:"
+          cat events.json
+
+      - name: Generate PDF
+        uses: frostmark/action-pdf@v1
+        with:
+          url: ${{ matrix.event.url }}
+          outputFile: pdfs/${{ matrix.event.filename }}
+
+      - name: Upload PDFs as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-events-pdfs
+          path: pdfs
