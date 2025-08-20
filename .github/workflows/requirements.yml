@@ -1,11 +1,16 @@
 name: On This Day API Workflow
 
 on:
-  push:
-    branches:
-      - feature/*
-      - staging
-      - master
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month (e.g., 01 for January)'
+        required: true
+        default: '01'
+      day:
+        description: 'Day (e.g., 01 for the 1st day of the month)'
+        required: true
+        default: '01'
 
 jobs:
   call_on_this_day_api:
@@ -14,23 +19,6 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v3
-
-      - name: Set environment variables based on branch
-        run: |
-          if [[ "${{ github.ref_name }}" == "master" ]]; then
-            echo "Running on master branch"
-            ENVIRONMENT="production"
-          elif [[ "${{ github.ref_name }}" == "staging" ]]; then
-            echo "Running on staging branch"
-            ENVIRONMENT="staging"
-          elif [[ "${{ github.ref_name }}" == feature/* ]]; then
-            echo "Running on feature branch"
-            ENVIRONMENT="development"
-          else
-            echo "Unknown branch: ${{ github.ref_name }}"
-            exit 1
-          fi
-          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
 
       - name: Call On This Day API
         run: |
@@ -49,16 +37,3 @@ jobs:
           # Display the file content for inspection
           echo "Saved API response to api_response.json"
           cat api_response.json
-
-      - name: Deploy or log based on environment
-        run: |
-          if [[ "$ENVIRONMENT" == "production" ]]; then
-            echo "Deploying to production environment"
-            # Add production deployment steps here
-          elif [[ "$ENVIRONMENT" == "staging" ]]; then
-            echo "Deploying to staging environment"
-            # Add staging deployment steps here
-          elif [[ "$ENVIRONMENT" == "development" ]]; then
-            echo "Running in development environment"
-            # Add development-specific steps here
-          fi
