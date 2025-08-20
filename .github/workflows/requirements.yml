@@ -36,9 +36,11 @@ jobs:
       - name: Fetch events from API
         id: fetch
         run: |
+          LANGUAGE="${LANGUAGE}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
+
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/$LANGUAGE/onthisday/selected/$MONTH/$DAY"
           echo "Calling API: $URL"
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" "$URL" > api_response.json
 
@@ -56,11 +58,12 @@ jobs:
             LENGTH=$(echo "$MATRIX" | jq 'length')
             echo "matrix_json=$MATRIX" >> $GITHUB_OUTPUT
             echo "events_length=$LENGTH" >> $GITHUB_OUTPUT
+          fi
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
-    if: ${{ needs.fetch_events.outputs.events_length && needs.fetch_events.outputs.events_length != '0' }}
+    if: ${{ needs.fetch_events.outputs.events_length != '0' }}
     strategy:
       matrix:
         event: ${{ fromJSON(needs.fetch_events.outputs.events_matrix) }}
@@ -79,7 +82,7 @@ jobs:
         run: mkdir -p pdfs
 
       - name: Generate PDF using Marketplace Action
-        uses: wei/html-to-pdf-action@main
+        uses: fifsky/html-to-pdf-action@master
         with:
           url: ${{ env.URL }}
           outputFile: pdfs/${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-${{ env.TITLE }}.pdf
