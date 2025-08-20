@@ -45,6 +45,7 @@ jobs:
           DAY=${{ github.event.inputs.day }}
           URL="https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"
           echo "Calling API: $URL"
+          mkdir -p cache
           RESPONSE=$(curl -s \
                           -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
                           "$URL")
