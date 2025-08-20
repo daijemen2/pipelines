@@ -55,12 +55,11 @@ jobs:
               filename: "\($m)-\($d)-\(.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")).pdf"
             }]' api_response.json)
 
-          if [ -z "$EVENTS" ] || [ "$EVENTS" = "null" ]; then
-            EVENTS="[]"
+          if [ -z "$EVENTS" ] || [ "$EVENTS" = "null" ] || [ "$EVENTS" = "[]" ]; then
+            echo "⚠️ No events found, injecting dummy"
+            EVENTS='[{"title":"no_events","url":"https://example.com","filename":"dummy.pdf"}]'
           fi
 
-          EVENTS=$(echo "$EVENTS" | jq -c '.')
-          echo "Final events JSON: $EVENTS"
           echo "events=$EVENTS" >> $GITHUB_OUTPUT
 
   generate_pdfs:
@@ -69,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        event: ${{ fromJson(needs.fetch_events.outputs.events || '[]') }}
+        event: ${{ fromJson(needs.fetch_events.outputs.events) }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -77,7 +76,6 @@ jobs:
       - name: Debug events JSON
         run: |
           echo '${{ needs.fetch_events.outputs.events }}' > events.json
-          echo "Events content:"
           cat events.json
 
       - name: Generate PDF
