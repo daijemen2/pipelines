@@ -43,30 +43,12 @@ jobs:
             cache/api_response.json > cache/matrix.json
           cat cache/matrix.json
 
-      - name: Generate PDFs
-        run: |
-          count=$(jq 'length' cache/matrix.json)
-          if [ "$count" -eq 0 ]; then
-            echo "No events to generate PDFs."
-            exit 0
-          fi
-
-          for row in $(jq -c '.[]' cache/matrix.json); do
-            TITLE=$(echo "$row" | jq -r '.title')
-            URL=$(echo "$row" | jq -r '.url')
-            FILE=$(echo "$row" | jq -r '.filename')
-
-            echo "Generating PDF for $TITLE"
-
-            # HTML-to-PDF Action de Marketplace
-            # Crear archivo HTML temporal
-            curl -s "$URL" -o "pdfs/temp.html"
-            gh workflow run arthur-jaouen/html2pdf-action@v1 \
-              --htmlFile "pdfs/temp.html" \
-              --outputFile "pdfs/$FILE" \
-              --pdfOptions '{"format": "A4", "printBackground": true, "preferCSSPageSize": true}'
-            rm "pdfs/temp.html"
-          done
+      - name: Generate PDFs using Marketplace Action
+        uses: arthur-jaouen/html2pdf-action@v1
+        with:
+          htmlFile: 'cache/matrix.json'
+          outputFile: 'pdfs/{{filename}}'
+          pdfOptions: '{"format": "A4", "printBackground": true, "preferCSSPageSize": true}'
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
