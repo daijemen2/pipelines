@@ -23,41 +23,69 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.prepare_matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
+        run: sudo apt-get update && sudo apt-get install -y curl jq nodejs npm
 
       - name: Call On This Day API
-        id: call_api
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="${{ github.event.inputs.month || '07' }}"
-          DAY="${{ github.event.inputs.day || '01' }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MONTH="${{ github.event.inputs.month }}"
+            DAY="${{ github.event.inputs.day }}"
+          else
+            MONTH="07"
+            DAY="01"
+          fi
+
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare matrix
-        id: prepare_matrix
+      - name: Prepare matrix.json
         run: |
-          matrix=$(jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' cache/api_response.json)
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          mkdir -p cache
+          jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+            {title: .title, url: .content_urls.desktop.page, filename: (\"$MONTH-$DAY-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
+            cache/api_response.json > cache/matrix.json
+          echo "Matrix content:"
+          cat cache/matrix.json
+
+      - name: Upload matrix.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix
+          path: cache/matrix.json
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
-    strategy:
-      matrix: ${{fromJson(needs.fetch_events.outputs.matrix)}}
     steps:
-      - name: Generate PDF using Marketplace Action
-        uses: chromium-actions/html-to-pdf-action@v2
+      - name: Download matrix
+        uses: actions/download-artifact@v4
         with:
-          url: ${{ matrix.url }}
-          outputPath: pdfs/${{ matrix.filename }}
+          name: matrix
+          path: cache
+
+      - name: Install Marketplace Action dependencies
+        run: npm install chromium-actions/html-to-pdf-action@v2
+
+      - name: Create PDFs folder
+        run: mkdir -p pdfs
+
+      - name: Generate PDFs using Marketplace Action from Node
+        run: |
+          node -e "
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const matrix = JSON.parse(fs.readFileSync('cache/matrix.json', 'utf8'));
+          if(matrix.length === 0) { console.log('No events to generate PDFs.'); process.exit(0); }
+          matrix.forEach(item => {
+            console.log('Generating PDF:', item.filename);
+            execSync(`npx chromium-actions/html-to-pdf-action@v2 --url \"${item.url}\" --outputPath \"pdfs/${item.filename}\"`, { stdio: 'inherit' });
+          });
+          "
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
