@@ -14,8 +14,6 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -38,8 +36,7 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare matrix
-        id: set-matrix
+      - name: Prepare matrix and save to file
         uses: actions/github-script@v7
         with:
           script: |
@@ -56,23 +53,49 @@ jobs:
               return { title, url, filename };
             }).filter(Boolean);
 
-            core.setOutput('matrix', JSON.stringify(matrix));
+            fs.writeFileSync('matrix.json', JSON.stringify(matrix, null, 2));
+
+      - name: Upload matrix file
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix
+          path: matrix.json
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
-      - name: HTML to PDF Converter
-        uses: narthanaj/html-to-pdf-action@v1.0.0
+      - name: Download matrix file
+        uses: actions/download-artifact@v4
         with:
-          url: ${{ matrix.url }}
-          outputFile: ${{ matrix.filename }}
+          name: matrix
 
-      - name: Upload PDF
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Generate PDFs using html-to-pdf-action
+        run: |
+          mkdir -p pdfs
+          jq -c '.[]' matrix.json | while read -r item; do
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
+
+            echo "Generating PDF: $filename from $url"
+
+            echo "url=$url" >> $GITHUB_ENV
+            echo "outputFile=pdfs/$filename" >> $GITHUB_ENV
+
+            echo "::group::Running html-to-pdf-action"
+            gh workflow run html-to-pdf-action \
+              --repo narthanaj/html-to-pdf-action \
+              --ref v1.0.0 \
+              -f url="$url" \
+              -f outputFile="pdfs/$filename"
+            echo "::endgroup::"
+          done
+
+      - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.filename }}
-          path: ${{ matrix.filename }}
+          name: generated-pdfs
+          path: pdfs/*.pdf
