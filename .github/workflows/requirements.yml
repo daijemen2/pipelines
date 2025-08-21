@@ -41,15 +41,19 @@ jobs:
       - name: Prepare matrix
         id: set-matrix
         run: |
+          # Generar la matriz compacta
           matrix=$(jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
             {title: .title, url: .content_urls.desktop.page, filename: ("07-01-" + (.title|gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")}]' cache/api_response.json)
-          
-          # Guardamos la matriz en el output, incluso si está vacía
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+
+          # Escapar caracteres problemáticos para GitHub Actions
+          matrix_escaped=$(echo "$matrix" | sed 's/%/%25/g; s/\n/%0A/g; s/\r/%0D/g')
+
+          # Guardar output
+          echo "matrix=$matrix_escaped" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
-    if: needs.fetch_events.outputs.matrix != '[]'  # <-- solo corre si hay elementos en la matriz
+    if: needs.fetch_events.outputs.matrix != ''  # solo corre si hay matriz
     runs-on: ubuntu-latest
     strategy:
       matrix: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
