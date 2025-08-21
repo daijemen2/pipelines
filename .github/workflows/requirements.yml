@@ -82,7 +82,7 @@ jobs:
         run: mkdir -p pdfs
 
       - name: Convert HTML to PDF
-        uses: narthanaj/html-to-pdf-action@v1
+        uses: narthanaj/html-to-pdf-action@main
         with:
           source: ${{ matrix.url }}
           output: pdfs/${{ matrix.filename }}
