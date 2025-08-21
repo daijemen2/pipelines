@@ -61,41 +61,38 @@ jobs:
           name: matrix
           path: matrix.json
 
-  generate_pdfs:
+  prepare_matrix:
     needs: fetch_events
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.load.outputs.matrix }}
     steps:
       - name: Download matrix file
         uses: actions/download-artifact@v4
         with:
           name: matrix
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Generate PDFs using html-to-pdf-action
+      - name: Load matrix into output
+        id: load
         run: |
-          mkdir -p pdfs
-          jq -c '.[]' matrix.json | while read -r item; do
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
+          MATRIX=$(cat matrix.json | jq -c)
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
 
-            echo "Generating PDF: $filename from $url"
+  generate_pdfs:
+    needs: prepare_matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.prepare_matrix.outputs.matrix) }}
+    steps:
+      - name: HTML to PDF Converter
+        uses: narthanaj/html-to-pdf-action@v1.0.0
+        with:
+          source: ${{ matrix.url }}
+          output: ${{ matrix.filename }}
 
-            echo "url=$url" >> $GITHUB_ENV
-            echo "outputFile=pdfs/$filename" >> $GITHUB_ENV
-
-            echo "::group::Running html-to-pdf-action"
-            gh workflow run html-to-pdf-action \
-              --repo narthanaj/html-to-pdf-action \
-              --ref v1.0.0 \
-              -f url="$url" \
-              -f outputFile="pdfs/$filename"
-            echo "::endgroup::"
-          done
-
-      - name: Upload PDFs
+      - name: Upload PDF
         uses: actions/upload-artifact@v4
         with:
-          name: generated-pdfs
-          path: pdfs/*.pdf
+          name: ${{ matrix.filename }}
+          path: ${{ matrix.filename }}
