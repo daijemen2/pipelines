@@ -23,8 +23,6 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
-    outputs:
-      matrix-file: cache/matrix.json
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -32,8 +30,9 @@ jobs:
       - name: Call On This Day API
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
+          MONTH="${{ github.event.inputs.month || '07' }}"
+          DAY="${{ github.event.inputs.day || '01' }}"
+          echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
@@ -41,16 +40,20 @@ jobs:
 
       - name: Validate API response
         run: |
-          if ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
-            echo "API response is empty or invalid."
-            exit 1
+          selected_count=$(jq '.selected // [] | length' cache/api_response.json)
+          echo "Found $selected_count events"
+          if [ "$selected_count" -eq 0 ]; then
+            echo "No events found for this date."
+            exit 0
           fi
 
       - name: Prepare matrix.json
         run: |
+          mkdir -p cache
           jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
             {title: .title, url: .content_urls.desktop.page, filename: (\"${MONTH}-${DAY}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
             cache/api_response.json > cache/matrix.json
+          echo "Matrix content:"
           cat cache/matrix.json
 
       - name: Upload matrix.json
@@ -72,20 +75,35 @@ jobs:
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      # Este step generará los PDFs uno por uno usando el Action de Marketplace
-      - name: Generate PDFs using HTML-to-PDF Action
-        uses: LukaszLapaj/html-to-pdf-action@master
-        with:
-          # json con lista de PDFs a generar
-          pdfs: |
-            $(
-              count=$(jq 'length' cache/matrix.json)
-              if [ "$count" -eq 0 ]; then
-                echo "[]"
-              else
-                jq -c '.[] | {htmlFile: .url, outputFile: ("pdfs/"+.filename), pdfOptions: {"format":"A4","margin":{"top":"10mm","left":"10mm","right":"10mm","bottom":"10mm"}}}' cache/matrix.json | jq -s '.'
-              fi
-            )
+      - name: Generate PDFs using Marketplace Action
+        run: |
+          count=$(jq 'length' cache/matrix.json)
+          if [ "$count" -eq 0 ]; then
+            echo "No events to generate PDFs."
+            exit 0
+          fi
+
+          jq -c '.[]' cache/matrix.json | while IFS= read -r item; do
+            title=$(echo "$item" | jq -r '.title')
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
+
+            echo "Generating PDF for $title"
+
+            # Descargar HTML temporalmente y luego generar PDF
+            tmp_html="pdfs/${filename}.html"
+            curl -s "$url" -o "$tmp_html"
+
+            # Usar Action de Marketplace arthur-jaouen/html2pdf-action
+            gh-actions-html-to-pdf:
+              uses: arthur-jaouen/html2pdf-action@v1
+              with:
+                inputPath: "$tmp_html"
+                outputPath: "pdfs/$filename"
+                pdfOptions: '{"format": "A4", "printBackground": true, "preferCSSPageSize": true}'
+
+            rm "$tmp_html"
+          done
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
