@@ -80,7 +80,7 @@ jobs:
             echo "✅ Found $LENGTH events."
           fi
 
-  generate_and_zip_pdfs:
+  generate_pdfs:
     needs: fetch_events
     if: needs.fetch_events.outputs.has_data == 'true'
     runs-on: ubuntu-latest
@@ -106,21 +106,31 @@ jobs:
           orientation: portrait
           print_background: true
 
+      - name: Upload PDF as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.filename }}
+          path: pdfs/${{ matrix.filename }}
+          retention-days: 1
+
   zip_and_upload:
-    needs: generate_and_zip_pdfs
+    needs: generate_pdfs
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: pdfs
 
-      - name: List PDFs and generate summary
+      - name: Generate ZIP and summary
         run: |
-          echo "📦 Generating ZIP and summary..."
           mkdir -p output
-          zip -j output/all_pdfs.zip pdfs/*.pdf
+          echo "📦 Generating ZIP and summary..."
+          find pdfs -name '*.pdf' -exec zip -j output/all_pdfs.zip {} +
 
           echo "📄 PDF Summary:"
-          for file in pdfs/*.pdf; do
+          find pdfs -name '*.pdf' | while read file; do
             name=$(basename "$file")
             size=$(du -h "$file" | cut -f1)
             hash=$(sha256sum "$file" | cut -d ' ' -f1)
