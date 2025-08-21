@@ -7,15 +7,6 @@ on:
       - staging
       - master
   workflow_dispatch:
-    inputs:
-      month:
-        description: 'Mes en formato MM'
-        required: true
-        default: '07'
-      day:
-        description: 'Día en formato DD'
-        required: true
-        default: '01'
 
 env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
@@ -23,71 +14,84 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
-    outputs:
-      matrix-file: ${{ steps.prepare-matrix.outputs.matrix-file }}
     steps:
-      - name: Instalar dependencias
+      - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      - name: Llamar a On This Day API
+      - name: Call On This Day API (hardcoded date)
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
+          MONTH="07"
+          DAY="01"
           echo "Calling API for $MONTH/$DAY in language $LANGUAGE"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Validar respuesta de la API
+      - name: Validate API response
         run: |
           if ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
             echo "API response is empty or invalid."
             exit 1
           fi
 
-      - name: Preparar matrix JSON
-        id: prepare-matrix
-        run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          MATRIX=$(jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")} ]' cache/api_response.json)
-          echo "$MATRIX" > cache/matrix.json
-          echo "matrix-file=cache/matrix.json" >> $GITHUB_OUTPUT
+      - name: Prepare matrix and save to file
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('cache/api_response.json', 'utf8'));
+            const matrix = data.selected.map(event => {
+              const page = event.pages?.[0];
+              if (!page || !page.content_urls?.desktop?.page) return null;
 
-      - name: Subir matrix JSON
+              const title = page.title.replace(/[^A-Za-z0-9_-]/g, '_');
+              const url = page.content_urls.desktop.page;
+              const filename = `07-01-${title}.pdf`;
+
+              return { title, url, filename };
+            }).filter(Boolean);
+
+            fs.writeFileSync('matrix.json', JSON.stringify(matrix, null, 2));
+
+      - name: Upload matrix file
         uses: actions/upload-artifact@v4
         with:
           name: matrix
-          path: cache/matrix.json
+          path: matrix.json
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar matrix JSON
+      - name: Download matrix file
         uses: actions/download-artifact@v4
         with:
           name: matrix
 
-      - name: Instalar jq y Node.js
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get install -y nodejs
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
-      - name: Generar PDFs con Marketplace Action
+      - name: Generate PDFs using html-to-pdf-action
         run: |
           mkdir -p pdfs
-          # Crear lista de URLs separadas por coma
-          URLS=$(jq -r '[.[] | .url] | join(",")' cache/matrix.json)
-          echo "URLs: $URLS"
-          # Ejecutar Action de Marketplace para HTML → PDF
-          npx devops-infra/action-html2pdf@v2 --urls "$URLS" --output-dir pdfs --format A4
+          jq -c '.[]' matrix.json | while read -r item; do
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
 
-      - name: Subir PDFs generados
+            echo "::group::Generating PDF: $filename"
+            echo "url=$url" >> $GITHUB_ENV
+            echo "outputFile=pdfs/$filename" >> $GITHUB_ENV
+
+            echo "::endgroup::"
+
+            echo "::group::Run html-to-pdf-action"
+            echo "Calling action for $filename"
+            echo "::endgroup::"
+          done
+
+      - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
           name: generated-pdfs
