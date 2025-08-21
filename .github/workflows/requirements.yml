@@ -14,8 +14,6 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -38,8 +36,7 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare matrix
-        id: set-matrix
+      - name: Prepare matrix and save to file
         uses: actions/github-script@v7
         with:
           script: |
@@ -56,23 +53,44 @@ jobs:
               return { title, url, filename };
             }).filter(Boolean);
 
-            core.setOutput('matrix', JSON.stringify(matrix));
+            fs.writeFileSync('matrix.json', JSON.stringify(matrix, null, 2));
+
+      - name: Upload matrix file
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix
+          path: matrix.json
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
-      - name: Generate PDF from Wikipedia page
-        uses: narthanaj/html-to-pdf-action@v1.0.0
+      - name: Download matrix file
+        uses: actions/download-artifact@v4
         with:
-          url: ${{ matrix.url }}
-          outputFile: ${{ matrix.filename }}
+          name: matrix
 
-      - name: Upload PDF as artifact
+      - name: Read matrix and set as environment variable
+        id: read_matrix
+        run: |
+          MATRIX=$(cat matrix.json)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+      - name: Generate PDFs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const matrix = JSON.parse(process.env.MATRIX);
+            const execSync = require('child_process').execSync;
+
+            for (const item of matrix) {
+              const cmd = `npx html-pdf-cli ${item.url} ${item.filename}`;
+              console.log(`Generating PDF: ${item.filename}`);
+              execSync(cmd, { stdio: 'inherit' });
+            }
+
+      - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.filename }}
-          path: ${{ matrix.filename }}
+          name: generated-pdfs
+          path: '*.pdf'
