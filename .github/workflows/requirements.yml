@@ -1,11 +1,6 @@
 name: On This Day API Workflow
 
 on:
-  push:
-    branches:
-      - feature/*
-      - staging
-      - master
   workflow_dispatch:
     inputs:
       month:
@@ -16,13 +11,20 @@ on:
         description: 'Day in DD format'
         required: true
         default: '01'
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
 
 env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  generate_pdfs:
+  fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      events-json: ${{ steps.prepare_list.outputs.events-json }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -30,42 +32,44 @@ jobs:
       - name: Call On This Day API
         id: call_api
         run: |
-          LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          mkdir -p cache pdfs
+          mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
-            > cache/api_response.json
+          "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${{ github.event.inputs.month }}/${{ github.event.inputs.day }}" \
+          > cache/api_response.json
 
       - name: Prepare events list
         id: prepare_list
         run: |
-          jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
+          EVENTS=$(jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
             {title: .title,
              url: .content_urls.desktop.page,
-             filename: ("'"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' \
-            cache/api_response.json > cache/matrix.json
+             filename: ("'"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' cache/api_response.json)
+          echo "Events JSON: $EVENTS"
+          echo "::set-output name=events-json::$EVENTS"
 
+  generate_pdfs:
+    needs: fetch_events
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download events
+        run: echo "${{ needs.fetch_events.outputs.events-json }}" > cache/matrix.json
+
+      - name: Check for events
+        run: |
           COUNT=$(jq 'length' cache/matrix.json)
           echo "Found $COUNT events"
           if [ "$COUNT" -eq 0 ]; then
-            echo "No events found, skipping PDF generation."
+            echo "No events to generate PDFs. Exiting."
             exit 0
           fi
 
-      - name: Generate PDFs
-        run: |
-          mkdir -p pdfs
-          for row in $(jq -c '.[]' cache/matrix.json); do
-            URL=$(echo "$row" | jq -r '.url')
-            FILE=$(echo "$row" | jq -r '.filename')
-            echo "Generating PDF: $FILE from $URL"
-          
-            # Marketplace Action que genera PDFs desde URL
-            # Esta línea ejecuta html2pdf-action del Marketplace
-            npx html2pdf-action --path "$URL" --output "pdfs/$FILE" --options '{"format":"A4"}'
-          done
+      - name: Generate PDFs (Marketplace Action)
+        uses: devops-infra/action-html2pdf@v2
+        with:
+          urls: |
+            ${{ join(fromJson(needs.fetch_events.outputs.events-json) | map(.url), '\n') }}
+          output-dir: pdfs
+          format: A4
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
