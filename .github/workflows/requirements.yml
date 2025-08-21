@@ -70,27 +70,29 @@ jobs:
         with:
           name: matrix
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Generate PDFs
+      - name: Install dependencies
         run: |
-          mkdir -p pdfs
-          jq -c '.[]' matrix.json | while read -r item; do
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
+          sudo apt-get update && sudo apt-get install -y jq
+          npm install -g html-to-pdf-cli
 
-            echo "Generating PDF: $filename from $url"
+      - name: Generate PDFs using html-to-pdf-cli
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+            const matrix = JSON.parse(fs.readFileSync('matrix.json', 'utf8'));
 
-            gh workflow run html-to-pdf-action \
-              --repo narthanaj/html-to-pdf-action \
-              --ref v1.0.0 \
-              -f url="$url" \
-              -f outputFile="pdfs/$filename"
-          done
+            for (const item of matrix) {
+              const url = item.url;
+              const filename = item.filename;
+
+              console.log(`Generating PDF: ${filename} from ${url}`);
+              execSync(`html-to-pdf-cli "${url}" "${filename}"`, { stdio: 'inherit' });
+            }
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
           name: generated-pdfs
-          path: pdfs/*.pdf
+          path: '*.pdf'
