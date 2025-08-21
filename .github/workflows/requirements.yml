@@ -53,11 +53,88 @@ jobs:
 
           if jq -e '.selected != null' cache/api_response.json > /dev/null; then
             MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
-              [.selected[] | select(.pages | length > 0) | .pages[0] | select(.content_urls.desktop.page != null) |
-                {
-                  title: .title,
-                  url: .content_urls.desktop.page,
-                  filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
-                }
+              [.selected[] 
+                | select(.pages | length > 0) 
+                | .pages[0] 
+                | select(.content_urls.desktop.page != null) 
+                | {
+                    title: .title,
+                    url: .content_urls.desktop.page,
+                    filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
+                  }
               ]
-            '
+            ' cache/api_response.json)
+          fi
+
+          echo "$MATRIX" > cache/matrix.json
+          LENGTH=$(jq 'length' cache/matrix.json)
+
+          if [ "$LENGTH" -eq 0 ]; then
+            echo "has_data=false" >> $GITHUB_OUTPUT
+            echo 'matrix=[]' >> $GITHUB_OUTPUT
+            echo "⚠️ No events found for this date."
+          else
+            echo "has_data=true" >> $GITHUB_OUTPUT
+            MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
+            echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
+            echo "✅ Found $LENGTH events."
+          fi
+
+  generate_pdfs:
+    needs: fetch_events
+    if: needs.fetch_events.outputs.has_data == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create PDFs folder
+        run: mkdir -p pdfs
+
+      - name: Check URL availability
+        run: curl -I ${{ matrix.url }}
+
+      - name: Convert HTML to PDF
+        uses: narthanaj/html-to-pdf-action@main
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          source: ${{ matrix.url }}
+          output: pdfs/${{ matrix.filename }}
+          format: A4
+          orientation: portrait
+          print_background: true
+
+      - name: Upload all PDFs as one artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all_pdfs_raw
+          path: pdfs/
+          retention-days: 1
+
+  zip_and_upload:
+    needs: generate_pdfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all PDFs
+        uses: actions/download-artifact@v4
+        with:
+          name: all_pdfs_raw
+          path: pdfs
+
+      - name: Zip all PDFs
+        run: |
+          mkdir -p output
+          zip -j output/all_pdfs.zip pdfs/*.pdf
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all_pdfs
+          path: output/all_pdfs.zip
+          retention-days: 1
