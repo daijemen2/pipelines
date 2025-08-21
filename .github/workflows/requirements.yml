@@ -64,6 +64,8 @@ jobs:
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Download matrix.json
         uses: actions/download-artifact@v4
