@@ -1,6 +1,11 @@
 name: On This Day API Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
     inputs:
       month:
