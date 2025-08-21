@@ -30,7 +30,6 @@ jobs:
       - name: Call On This Day API
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
-          # Usar inputs si se ejecuta manual, sino valores por default
           MONTH="${{ github.event.inputs.month || '07' }}"
           DAY="${{ github.event.inputs.day || '01' }}"
           echo "Fetching events for $MONTH/$DAY"
@@ -43,7 +42,7 @@ jobs:
         run: |
           mkdir -p cache
           jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: (\"${MONTH}-${DAY}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
+            {title: .title, url: .content_urls.desktop.page, filename: ("${MONTH}-${DAY}-" + (.title|gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")}] " \
             cache/api_response.json > cache/matrix.json
           echo "Matrix content:"
           cat cache/matrix.json
@@ -64,16 +63,10 @@ jobs:
           name: matrix
           path: cache
 
-      - name: Install Node & Puppeteer
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y nodejs npm
-          npm install puppeteer
-
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDFs
+      - name: Generate PDFs by calling html-to-pdf workflow
         run: |
           count=$(jq 'length' cache/matrix.json)
           if [ "$count" -eq 0 ]; then
@@ -81,21 +74,13 @@ jobs:
             exit 0
           fi
 
-          node -e "
-          const fs = require('fs');
-          const puppeteer = require('puppeteer');
-          const matrix = JSON.parse(fs.readFileSync('cache/matrix.json', 'utf8'));
-          (async () => {
-            const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
-            for (const item of matrix) {
-              console.log('Generating PDF:', item.filename);
-              const page = await browser.newPage();
-              await page.goto(item.url, { waitUntil: 'networkidle0' });
-              await page.pdf({ path: 'pdfs/' + item.filename, format: 'A4' });
-            }
-            await browser.close();
-          })();
-          "
+          jq -c '.[]' cache/matrix.json | while read item; do
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
+
+            echo "Dispatching html-to-pdf workflow for $filename"
+            gh workflow run html-to-pdf.yml -f url="$url" -f output="pdfs/$filename"
+          done
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
