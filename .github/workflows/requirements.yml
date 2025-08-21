@@ -12,7 +12,7 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  fetch_events:
+  test_on_this_day:
     runs-on: ubuntu-latest
     steps:
       - name: Install dependencies
@@ -29,7 +29,22 @@ jobs:
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Show API response
+      - name: Extract first event info
+        id: extract
         run: |
-          echo "API response:"
-          jq '.selected[0]' cache/api_response.json
+          TITLE=$(jq -r '.selected[0].pages[0].title' cache/api_response.json | sed 's/[^A-Za-z0-9_-]/_/g')
+          URL=$(jq -r '.selected[0].pages[0].content_urls.desktop.page' cache/api_response.json)
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Generate PDF
+        uses: narthanaj/html-to-pdf-action@v1
+        with:
+          source: ${{ steps.extract.outputs.url }}
+          output: pdfs/07-01-${{ steps.extract.outputs.title }}.pdf
+
+      - name: Upload PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-event-pdf
+          path: pdfs
