@@ -1,97 +1,78 @@
 name: On This Day API Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
     inputs:
       month:
         description: 'Month in MM format (01-12)'
         required: true
-        default: '04'
+        default: '07'
       day:
         description: 'Day in DD format (01-31)'
         required: true
-        default: '14'
-
-env:
-  LANGUAGE: es
+        default: '01'
 
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      has_data: ${{ steps.set-matrix.outputs.has_data }}
-    steps:
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
-
-      - name: Call On This Day API
-        run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          echo "Fetching events for $MONTH/$DAY"
-          mkdir -p cache
-          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
-            > cache/api_response.json
-
-      - name: Prepare matrix.json and set outputs
-        id: set-matrix
-        run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          MATRIX="[]"
-
-          if jq -e '.selected != null' cache/api_response.json > /dev/null; then
-            MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
-              [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-                {
-                  title: .title,
-                  url: .content_urls.desktop.page,
-                  filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
-                }
-              ]
-            ' cache/api_response.json)
-          fi
-
-          echo "$MATRIX" > cache/matrix.json
-
-          LENGTH=$(jq 'length' cache/matrix.json)
-
-          if [ "$LENGTH" -eq 0 ]; then
-            echo "has_data=false" >> $GITHUB_OUTPUT
-            echo 'matrix=[]' >> $GITHUB_OUTPUT
-          else
-            echo "has_data=true" >> $GITHUB_OUTPUT
-            MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
-            echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
-          fi
-
-  generate_pdfs:
-    needs: fetch_events
-    if: needs.fetch_events.outputs.has_data == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Create PDFs folder
-        run: mkdir -p pdfs
-
-      - name: Convert HTML to PDF
-        uses: narthanaj/html-to-pdf-action@main
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          source: ${{ matrix.url }}
-          output: pdfs/${{ matrix.filename }}
-          format: A4
-          orientation: portrait
-          print_background: true
+          node-version: '18'
 
-      - name: Upload PDF
-        uses: actions/upload-artifact@v4
+      - name: Install dependencies
+        run: |
+          npm install axios
+
+      - name: Fetch historical events
+        id: fetch
+        run: |
+          MONTH=${{ github.event.inputs.month || '07' }}
+          DAY=${{ github.event.inputs.day || '01' }}
+          echo "Fetching events for $MONTH-$DAY"
+          node -e "
+            const axios = require('axios');
+            (async () => {
+              const url = \`https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/${MONTH}/${DAY}\`;
+              const res = await axios.get(url);
+              const events = res.data.selected || [];
+              const urls = events.map(e => e.pages?.[0]?.content_urls?.desktop?.page).filter(Boolean);
+              console.log('::set-output name=urls::' + JSON.stringify(urls));
+            })();
+          "
+
+      - name: Save events URLs
+        run: echo "${{ steps.fetch.outputs.urls }}" > urls.json
+
+      - name: Convert URLs to PDFs
+        run: |
+          mkdir pdfs
+          urls=$(cat urls.json | jq -r '.[]')
+          i=1
+          for url in $urls; do
+            echo "Converting $url to PDF"
+            curl -s "https://api.html2pdf.app/v1/generate" \
+              -H "Content-Type: application/json" \
+              -d "{\"html\": \"$url\"}" \
+              -o "pdfs/event_$i.pdf"
+            i=$((i+1))
+          done
+
+      - name: Create ZIP with PDFs
+        run: |
+          zip -r events_pdfs.zip pdfs/
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.filename }}
-          path: pdfs/${{ matrix.filename }}
+          name: events_pdfs
+          path: events_pdfs.zip
