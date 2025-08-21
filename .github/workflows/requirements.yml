@@ -21,58 +21,22 @@ jobs:
   fetch_events:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
+      - name: Get On This Day events
+        id: get_events
         run: |
-          npm install axios
+          MONTH=${{ github.event.inputs.month }}
+          DAY=${{ github.event.inputs.day }}
+          URL="https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/$MONTH/$DAY"
+          echo "Fetching $URL"
+          curl -s $URL > events.json
+          cat events.json
 
-      - name: Fetch historical events
-        id: fetch
+      - name: Parse JSON and create list of URLs
+        id: parse
         run: |
-          MONTH=${{ github.event.inputs.month || '07' }}
-          DAY=${{ github.event.inputs.day || '01' }}
-          echo "Fetching events for $MONTH-$DAY"
-          node -e "
-            const axios = require('axios');
-            (async () => {
-              const url = \`https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/${MONTH}/${DAY}\`;
-              const res = await axios.get(url);
-              const events = res.data.selected || [];
-              const urls = events.map(e => e.pages?.[0]?.content_urls?.desktop?.page).filter(Boolean);
-              console.log('::set-output name=urls::' + JSON.stringify(urls));
-            })();
-          "
-
-      - name: Save events URLs
-        run: echo "${{ steps.fetch.outputs.urls }}" > urls.json
-
-      - name: Convert URLs to PDFs
-        run: |
-          mkdir pdfs
-          urls=$(cat urls.json | jq -r '.[]')
-          i=1
-          for url in $urls; do
-            echo "Converting $url to PDF"
-            curl -s "https://api.html2pdf.app/v1/generate" \
-              -H "Content-Type: application/json" \
-              -d "{\"html\": \"$url\"}" \
-              -o "pdfs/event_$i.pdf"
-            i=$((i+1))
-          done
-
-      - name: Create ZIP with PDFs
-        run: |
-          zip -r events_pdfs.zip pdfs/
-
-      - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: events_pdfs
-          path: events_pdfs.zip
+          urls=$(jq -r '.selected[].pages[0].content_urls.desktop.page' events.json)
+          echo "$urls" > urls.txt
+          cat urls.txt
+          echo "urls<<EOF" >> $GITHUB_ENV
+          echo "$urls" >> $GITHUB_ENV
+          echo "EOF" >> $GITH
