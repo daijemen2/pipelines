@@ -63,14 +63,30 @@ jobs:
           name: matrix
           path: cache
 
+      - name: Install Node & html-pdf-cli
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nodejs npm
+          npm install -g html-pdf-cli
+
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDFs using Marketplace Action
-        uses: chromium-actions/html-to-pdf-action@v2
-        with:
-          matrix-file: cache/matrix.json
-          output-dir: pdfs
+      - name: Generate PDFs
+        run: |
+          count=$(jq 'length' cache/matrix.json)
+          if [ "$count" -eq 0 ]; then
+            echo "No events to generate PDFs."
+            exit 0
+          fi
+
+          # Recorremos matrix.json y generamos PDFs usando npx html-pdf
+          jq -c '.[]' cache/matrix.json | while IFS= read -r item; do
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
+            echo "Generating PDF: $filename from $url"
+            npx html-pdf-cli "$url" -o "pdfs/$filename" --format A4
+          done
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
