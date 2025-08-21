@@ -34,6 +34,8 @@ jobs:
           LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
+          if [ -z "$MONTH" ]; then MONTH="07"; fi
+          if [ -z "$DAY" ]; then DAY="01"; fi
           echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
@@ -45,6 +47,9 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
+          if [ -z "$MONTH" ]; then MONTH="07"; fi
+          if [ -z "$DAY" ]; then DAY="01"; fi
+
           jq --arg month "$MONTH" --arg day "$DAY" '
             [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
               {
@@ -54,6 +59,7 @@ jobs:
               }
             ]
           ' cache/api_response.json > cache/matrix.json
+
           echo "matrix=$(jq -c '.' cache/matrix.json)" >> $GITHUB_OUTPUT
 
   generate_pdfs:
