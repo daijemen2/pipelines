@@ -56,12 +56,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        event: ${{ fromJson(needs.fetch_events.outputs.matrix-json) }}
+        event: ${{fromJson(needs.fetch_events.outputs.matrix-json)}}
     steps:
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDF (parallel)
+      - name: Generate PDF for event
         uses: LukaszLapaj/html-to-pdf-action@master
         with:
           htmlFile: ${{ matrix.event.url }}
@@ -69,7 +69,6 @@ jobs:
           pdfOptions: '{"format": "A4", "margin": {"top": "10mm","left":"10mm","right":"10mm","bottom":"10mm"}}'
 
       - name: Upload PDFs
-        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: generated-pdfs
