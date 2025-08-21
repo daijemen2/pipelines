@@ -7,6 +7,15 @@ on:
       - staging
       - master
   workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month in MM format (01-12)'
+        required: true
+        default: '07'
+      day:
+        description: 'Day in DD format (01-31)'
+        required: true
+        default: '01'
 
 env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
@@ -18,78 +27,75 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      - name: Call On This Day API (hardcoded date)
+      - name: Call On This Day API
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="07"
-          DAY="01"
-          echo "Calling API for $MONTH/$DAY in language $LANGUAGE"
+          # Usar inputs si se ejecuta manual, sino valores por default
+          MONTH="${{ github.event.inputs.month || '07' }}"
+          DAY="${{ github.event.inputs.day || '01' }}"
+          echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Validate API response
+      - name: Prepare matrix.json
         run: |
-          if ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
-            echo "API response is empty or invalid."
-            exit 1
-          fi
+          mkdir -p cache
+          jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+            {title: .title, url: .content_urls.desktop.page, filename: (\"${MONTH}-${DAY}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
+            cache/api_response.json > cache/matrix.json
+          echo "Matrix content:"
+          cat cache/matrix.json
 
-      - name: Prepare matrix and save to file
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const data = JSON.parse(fs.readFileSync('cache/api_response.json', 'utf8'));
-            const matrix = data.selected.map(event => {
-              const page = event.pages?.[0];
-              if (!page || !page.content_urls?.desktop?.page) return null;
-
-              const title = page.title.replace(/[^A-Za-z0-9_-]/g, '_');
-              const url = page.content_urls.desktop.page;
-              const filename = `07-01-${title}.pdf`;
-
-              return { title, url, filename };
-            }).filter(Boolean);
-
-            fs.writeFileSync('matrix.json', JSON.stringify(matrix, null, 2));
-
-      - name: Upload matrix file
+      - name: Upload matrix.json
         uses: actions/upload-artifact@v4
         with:
           name: matrix
-          path: matrix.json
+          path: cache/matrix.json
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
     steps:
-      - name: Download matrix file
+      - name: Download matrix.json
         uses: actions/download-artifact@v4
         with:
           name: matrix
+          path: cache
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Generate PDFs using html-to-pdf-action
+      - name: Install Node & Puppeteer
         run: |
-          mkdir -p pdfs
-          jq -c '.[]' matrix.json | while read -r item; do
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
+          sudo apt-get update
+          sudo apt-get install -y nodejs npm
+          npm install puppeteer
 
-            echo "::group::Generating PDF: $filename"
-            echo "url=$url" >> $GITHUB_ENV
-            echo "outputFile=pdfs/$filename" >> $GITHUB_ENV
+      - name: Create PDFs folder
+        run: mkdir -p pdfs
 
-            echo "::endgroup::"
+      - name: Generate PDFs
+        run: |
+          count=$(jq 'length' cache/matrix.json)
+          if [ "$count" -eq 0 ]; then
+            echo "No events to generate PDFs."
+            exit 0
+          fi
 
-            echo "::group::Run html-to-pdf-action"
-            echo "Calling action for $filename"
-            echo "::endgroup::"
-          done
+          node -e "
+          const fs = require('fs');
+          const puppeteer = require('puppeteer');
+          const matrix = JSON.parse(fs.readFileSync('cache/matrix.json', 'utf8'));
+          (async () => {
+            const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+            for (const item of matrix) {
+              console.log('Generating PDF:', item.filename);
+              const page = await browser.newPage();
+              await page.goto(item.url, { waitUntil: 'networkidle0' });
+              await page.pdf({ path: 'pdfs/' + item.filename, format: 'A4' });
+            }
+            await browser.close();
+          })();
+          "
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
