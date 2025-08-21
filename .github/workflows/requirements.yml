@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       month:
-        description: 'Month in MM format (01-12)'
+        description: 'Month in MM format'
         required: true
         default: '07'
       day:
-        description: 'Day in DD format (01-31)'
+        description: 'Day in DD format'
         required: true
         default: '01'
 
@@ -21,8 +21,10 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  generate_pdfs:
+  fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.prepare_matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -33,37 +35,31 @@ jobs:
           LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          mkdir -p cache pdfs
+          mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare events matrix
+      - name: Prepare matrix
         id: prepare_matrix
         run: |
-          jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
-              {title: .title,
-               url: .content_urls.desktop.page,
-               filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' \
-              cache/api_response.json > cache/matrix.json
+          MATRIX=$(jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
+            {title: .title, url: .content_urls.desktop.page, filename: ("'"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' cache/api_response.json)
+          echo "Matrix=$MATRIX"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
-          count=$(jq 'length' cache/matrix.json)
-          echo "Found $count events"
-          if [ "$count" -eq 0 ]; then
-            echo "No events found, skipping PDF generation."
-            exit 0
-          fi
-
-      - name: Generate PDFs (Marketplace Action)
-        run: |
-          mkdir -p pdfs
-          jq -c '.[]' cache/matrix.json | while IFS= read -r row; do
-            url=$(echo "$row" | jq -r '.url')
-            file=$(echo "$row" | jq -r '.filename')
-            echo "Generating PDF $file from $url"
-            # Aquí usamos el Action de Marketplace correctamente
-            npx html2pdf-action --path "$url" --output "pdfs/$file" --options '{"format":"A4"}'
-          done
+  generate_pdfs:
+    needs: fetch_events
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{fromJson(needs.fetch_events.outputs.matrix)}}
+    steps:
+      - name: Generate PDF from URL
+        uses: ntdesmond/html2pdf-action@v1
+        with:
+          url: ${{ matrix.url }}
+          output: pdfs/${{ matrix.filename }}
+          options: '{"format":"A4"}'
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
