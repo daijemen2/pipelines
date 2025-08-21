@@ -83,16 +83,22 @@ jobs:
             const { execSync } = require('child_process');
             const matrix = JSON.parse(fs.readFileSync('matrix.json', 'utf8'));
 
+            const outputDir = 'pdfs';
+            if (!fs.existsSync(outputDir)) {
+              fs.mkdirSync(outputDir);
+            }
+
             for (const item of matrix) {
               const url = item.url;
               const filename = item.filename;
 
               console.log(`Generating PDF: ${filename} from ${url}`);
-              execSync(`html-to-pdf-cli "${url}" "${filename}"`, { stdio: 'inherit' });
+              const command = `html-to-pdf-cli -url "${url}" -saveto "${outputDir}" -pdf_name "${filename}"`;
+              execSync(command, { stdio: 'inherit' });
             }
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
           name: generated-pdfs
-          path: '*.pdf'
+          path: pdfs/*.pdf
