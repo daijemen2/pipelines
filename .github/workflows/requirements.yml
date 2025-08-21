@@ -109,28 +109,27 @@ jobs:
           orientation: portrait
           print_background: true
 
-      - name: Upload all PDFs as one artifact
+      - name: Upload individual PDF
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: all_pdfs_raw
-          path: pdfs/
+          name: ${{ matrix.filename }}
+          path: pdfs/${{ matrix.filename }}
           retention-days: 1
 
   zip_and_upload:
     needs: generate_pdfs
     runs-on: ubuntu-latest
     steps:
-      - name: Download all PDFs
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: all_pdfs_raw
           path: pdfs
 
       - name: Zip all PDFs
         run: |
           mkdir -p output
-          zip -j output/all_pdfs.zip pdfs/*.pdf
+          find pdfs -name '*.pdf' -exec zip -j output/all_pdfs.zip {} +
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
