@@ -14,6 +14,8 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -23,7 +25,6 @@ jobs:
           LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="07"
           DAY="01"
-          echo "Calling API for $MONTH/$DAY in language $LANGUAGE"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
@@ -36,52 +37,31 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare matrix.json
+      - name: Prepare matrix
+        id: set-matrix
         run: |
-          mkdir -p cache
-          jq '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+          matrix=$(jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
             {title: .title, url: .content_urls.desktop.page, filename: ("07-01-" + (.title|gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")}]' \
-            cache/api_response.json > cache/matrix.json
-          echo "Matrix created:"
-          cat cache/matrix.json
-
-      - name: Upload matrix file
-        uses: actions/upload-artifact@v4
-        with:
-          name: matrix
-          path: cache/matrix.json
+            cache/api_response.json)
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
-      - name: Download matrix file
-        uses: actions/download-artifact@v4
-        with:
-          name: matrix
-          path: cache
-
-      - name: Verify matrix file
-        run: |
-          ls -l cache
-          cat cache/matrix.json
-
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDFs
-        run: |
-          count=$(jq 'length' cache/matrix.json)
-          if [ "$count" -eq 0 ]; then
-            echo "No events to generate PDFs."
-            exit 0
-          fi
+      - name: Generate PDF
+        uses: chromium-actions/html-to-pdf-action@v2
+        with:
+          url: ${{ matrix.url }}
+          outputPath: pdfs/${{ matrix.filename }}
 
-          jq -c '.[]' cache/matrix.json | while read -r item; do
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
-            echo "Generating PDF: $filename from $url"
-
-            # Acción del Marketplace como step dinámico no es posible dentro de while
-            # Alternativa: llamar a un script que ejecute html-to-pdf por cada URL
-            npx chromium-actions/html-to-pd
+      - name: Upload PDFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-pdfs
+          path: pdfs/*.pdf
