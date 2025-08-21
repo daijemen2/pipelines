@@ -35,9 +35,6 @@ jobs:
           LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          if [ -z "$MONTH" ]; then MONTH="07"; fi
-          if [ -z "$DAY" ]; then DAY="01"; fi
-          echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
@@ -48,9 +45,6 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          if [ -z "$MONTH" ]; then MONTH="07"; fi
-          if [ -z "$DAY" ]; then DAY="01"; fi
-
           MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
             [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
               {
@@ -63,24 +57,41 @@ jobs:
 
           echo "$MATRIX" > cache/matrix.json
 
+          echo "🔍 DEBUG: Contenido de matrix.json"
+          cat cache/matrix.json
+
           LENGTH=$(jq 'length' cache/matrix.json)
 
           if [ "$LENGTH" -eq 0 ]; then
             echo "has_data=false" >> $GITHUB_OUTPUT
             echo 'matrix=[]' >> $GITHUB_OUTPUT
+            echo "⚠️ DEBUG: No se encontraron eventos. matrix=[]"
           else
             echo "has_data=true" >> $GITHUB_OUTPUT
             MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
             echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
+            echo "✅ DEBUG: matrix=$MATRIX_ESCAPED"
           fi
 
-  generate_pdfs:
+  prepare_matrix:
     needs: fetch_events
     if: needs.fetch_events.outputs.has_data == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pass.outputs.matrix }}
+    steps:
+      - name: Pasar matrix al siguiente job
+        id: pass
+        run: |
+          echo "matrix=${{ needs.fetch_events.outputs.matrix }}" >> $GITHUB_OUTPUT
+          echo "✅ DEBUG: matrix recibido en prepare_matrix: ${{ needs.fetch_events.outputs.matrix }}"
+
+  generate_pdfs:
+    needs: prepare_matrix
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
+        include: ${{ fromJson(needs.prepare_matrix.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
