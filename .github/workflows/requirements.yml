@@ -24,7 +24,6 @@ jobs:
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
-
       - name: Restore API cache
         id: cache
         uses: actions/cache@v3
@@ -53,7 +52,7 @@ jobs:
 
           if jq -e '.selected != null' cache/api_response.json > /dev/null; then
             MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
-              [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+              [.selected[] | select(.pages | length > 0) | .pages[0] | select(.content_urls.desktop.page != null) |
                 {
                   title: .title,
                   url: .content_urls.desktop.page,
@@ -64,7 +63,6 @@ jobs:
           fi
 
           echo "$MATRIX" > cache/matrix.json
-
           LENGTH=$(jq 'length' cache/matrix.json)
 
           if [ "$LENGTH" -eq 0 ]; then
@@ -93,8 +91,13 @@ jobs:
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
+      - name: Check URL availability
+        run: curl -I ${{ matrix.url }}
+
       - name: Convert HTML to PDF
         uses: narthanaj/html-to-pdf-action@main
+        timeout-minutes: 5
+        continue-on-error: true
         with:
           source: ${{ matrix.url }}
           output: pdfs/${{ matrix.filename }}
@@ -103,6 +106,7 @@ jobs:
           print_background: true
 
       - name: Upload PDF
+        if: success() || failure()  # Intenta subir el PDF incluso si falló la conversión
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.filename }}
