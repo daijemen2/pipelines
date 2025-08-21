@@ -13,7 +13,7 @@ on:
         default: '14'
 
 env:
-  LANGUAGE: es
+  LANGUAGE: ${{ vars.LANG }}
 
 jobs:
   fetch_events:
@@ -25,7 +25,15 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
+      - name: Restore API cache
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: cache/api_response.json
+          key: api-cache-${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
+
       - name: Call On This Day API
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
@@ -66,12 +74,12 @@ jobs:
             MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
             echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
           fi
-
   generate_pdfs:
     needs: fetch_events
     if: needs.fetch_events.outputs.has_data == 'true'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
@@ -95,3 +103,4 @@ jobs:
         with:
           name: ${{ matrix.filename }}
           path: pdfs/${{ matrix.filename }}
+          retention-days: 1
