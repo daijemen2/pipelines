@@ -40,10 +40,18 @@ jobs:
 
       - name: Prepare matrix.json
         run: |
+          MONTH="${{ github.event.inputs.month || '07' }}"
+          DAY="${{ github.event.inputs.day || '01' }}"
           mkdir -p cache
-          jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: ("${MONTH}-${DAY}-" + (.title|gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")}] " \
-            cache/api_response.json > cache/matrix.json
+          jq --arg month "$MONTH" --arg day "$DAY" '
+            [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+              {
+                title: .title,
+                url: .content_urls.desktop.page,
+                filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
+              }
+            ]
+          ' cache/api_response.json > cache/matrix.json
           echo "Matrix content:"
           cat cache/matrix.json
 
@@ -66,7 +74,7 @@ jobs:
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDFs by calling html-to-pdf workflow
+      - name: Generate PDFs using html-to-pdf.yml workflow
         run: |
           count=$(jq 'length' cache/matrix.json)
           if [ "$count" -eq 0 ]; then
@@ -78,7 +86,7 @@ jobs:
             url=$(echo "$item" | jq -r '.url')
             filename=$(echo "$item" | jq -r '.filename')
 
-            echo "Dispatching html-to-pdf workflow for $filename"
+            echo "Dispatching html-to-pdf.yml for $filename"
             gh workflow run html-to-pdf.yml -f url="$url" -f output="pdfs/$filename"
           done
 
