@@ -66,23 +66,11 @@ jobs:
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDFs via Marketplace Action
-        run: |
-          count=$(jq 'length' cache/matrix.json)
-          if [ "$count" -eq 0 ]; then
-            echo "No events to generate PDFs."
-            exit 0
-          fi
-
-          # Recorremos matrix.json y generamos PDFs con html-to-pdf-action
-          jq -c '.[]' cache/matrix.json | while IFS= read -r item; do
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
-            echo "Generating PDF $filename from $url"
-
-            # Action de Marketplace para generar PDF
-            npx chromium-actions/html-to-pdf-action@v2 --url "$url" --outputPath "pdfs/$filename"
-          done
+      - name: Generate PDFs using Marketplace Action
+        uses: chromium-actions/html-to-pdf-action@v2
+        with:
+          matrix-file: cache/matrix.json
+          output-dir: pdfs
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
