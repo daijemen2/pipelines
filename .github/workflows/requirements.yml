@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       month:
-        description: 'Month in MM format'
+        description: 'Mes en formato MM'
         required: true
         default: '07'
       day:
-        description: 'Day in DD format'
+        description: 'Día en formato DD'
         required: true
         default: '01'
 
@@ -24,77 +24,70 @@ jobs:
   fetch_events:
     runs-on: ubuntu-latest
     outputs:
-      matrix-file: matrix.json
+      matrix-file: ${{ steps.prepare-matrix.outputs.matrix-file }}
     steps:
-      - name: Install dependencies
+      - name: Instalar dependencias
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      - name: Call On This Day API
+      - name: Llamar a On This Day API
         run: |
+          LANGUAGE="${{ env.LANGUAGE }}"
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
+          echo "Calling API for $MONTH/$DAY in language $LANGUAGE"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-          "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${{ github.event.inputs.month }}/${{ github.event.inputs.day }}" \
-          > cache/api_response.json
+            "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
+            > cache/api_response.json
 
-      - name: Validate API response
+      - name: Validar respuesta de la API
         run: |
           if ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
             echo "API response is empty or invalid."
             exit 1
           fi
 
-      - name: Prepare matrix and save to file
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const month = '${{ github.event.inputs.month }}';
-            const day = '${{ github.event.inputs.day }}';
-            const data = JSON.parse(fs.readFileSync('cache/api_response.json', 'utf8'));
-            const matrix = (data.selected || []).map(event => {
-              const page = event.pages?.[0];
-              if (!page || !page.content_urls?.desktop?.page) return null;
-              const title = page.title.replace(/[^A-Za-z0-9_-]/g, '_');
-              const url = page.content_urls.desktop.page;
-              const filename = `${month}-${day}-${title}.pdf`;
-              return { title, url, filename };
-            }).filter(Boolean);
-            fs.writeFileSync('matrix.json', JSON.stringify(matrix, null, 2));
+      - name: Preparar matrix JSON
+        id: prepare-matrix
+        run: |
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
+          MATRIX=$(jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+            {title: .title, url: .content_urls.desktop.page, filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")} ]' cache/api_response.json)
+          echo "$MATRIX" > cache/matrix.json
+          echo "matrix-file=cache/matrix.json" >> $GITHUB_OUTPUT
 
-      - name: Upload matrix file
+      - name: Subir matrix JSON
         uses: actions/upload-artifact@v4
         with:
           name: matrix
-          path: matrix.json
+          path: cache/matrix.json
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
     steps:
-      - name: Download matrix file
+      - name: Descargar matrix JSON
         uses: actions/download-artifact@v4
         with:
           name: matrix
 
-      - name: Check matrix
+      - name: Instalar jq y Node.js
         run: |
-          COUNT=$(jq 'length' matrix.json)
-          echo "Found $COUNT events"
-          if [ "$COUNT" -eq 0 ]; then
-            echo "No events to generate PDFs. Exiting."
-            exit 0
-          fi
+          sudo apt-get update && sudo apt-get install -y jq
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
 
-      # ✅ Acción de Marketplace HTML to PDF
-      - name: Generate PDFs using Marketplace Action
-        uses: devops-infra/action-html2pdf@v2
-        with:
-          urls: |
-            ${{ toJson(fromJson(needs.fetch_events.outputs['matrix-file']) | map(.url)) }}
-          output-dir: pdfs
-          format: A4
+      - name: Generar PDFs con Marketplace Action
+        run: |
+          mkdir -p pdfs
+          # Crear lista de URLs separadas por coma
+          URLS=$(jq -r '[.[] | .url] | join(",")' cache/matrix.json)
+          echo "URLs: $URLS"
+          # Ejecutar Action de Marketplace para HTML → PDF
+          npx devops-infra/action-html2pdf@v2 --urls "$URLS" --output-dir pdfs --format A4
 
-      - name: Upload PDFs
+      - name: Subir PDFs generados
         uses: actions/upload-artifact@v4
         with:
           name: generated-pdfs
