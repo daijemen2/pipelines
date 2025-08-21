@@ -6,11 +6,11 @@ on:
       month:
         description: 'Month in MM format (01-12)'
         required: true
-        default: '07'
+        default: '04'
       day:
         description: 'Day in DD format (01-31)'
         required: true
-        default: '20'
+        default: '14'
 
 env:
   LANGUAGE: es
@@ -90,8 +90,8 @@ jobs:
           orientation: portrait
           print_background: true
 
-      - name: Upload PDFs
+      - name: Upload PDF
         uses: actions/upload-artifact@v4
         with:
-          name: generated-pdfs
-          path: pdfs/*.pdf
+          name: ${{ matrix.filename }}
+          path: pdfs/${{ matrix.filename }}
