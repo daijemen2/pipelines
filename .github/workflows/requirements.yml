@@ -24,49 +24,68 @@ jobs:
   fetch_events:
     runs-on: ubuntu-latest
     outputs:
-      matrix-json: ${{ steps.prepare-matrix.outputs.matrix-json }}
+      matrix-file: cache/matrix.json
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
       - name: Call On This Day API
-        id: call-api
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="${{ github.event.inputs.month || '07' }}"
-          DAY="${{ github.event.inputs.day || '01' }}"
-          echo "Fetching events for $MONTH/$DAY"
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare matrix.json
-        id: prepare-matrix
+      - name: Validate API response
         run: |
-          mkdir -p cache
+          if ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
+            echo "API response is empty or invalid."
+            exit 1
+          fi
+
+      - name: Prepare matrix.json
+        run: |
           jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
             {title: .title, url: .content_urls.desktop.page, filename: (\"${MONTH}-${DAY}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
             cache/api_response.json > cache/matrix.json
           cat cache/matrix.json
-          echo "::set-output name=matrix-json::$(cat cache/matrix.json | jq -c .)"
+
+      - name: Upload matrix.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix
+          path: cache/matrix.json
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        event: ${{fromJson(needs.fetch_events.outputs.matrix-json)}}
     steps:
+      - name: Download matrix.json
+        uses: actions/download-artifact@v4
+        with:
+          name: matrix
+          path: cache
+
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDF for event
+      # Este step generará los PDFs uno por uno usando el Action de Marketplace
+      - name: Generate PDFs using HTML-to-PDF Action
         uses: LukaszLapaj/html-to-pdf-action@master
         with:
-          htmlFile: ${{ matrix.event.url }}
-          outputFile: pdfs/${{ matrix.event.filename }}
-          pdfOptions: '{"format": "A4", "margin": {"top": "10mm","left":"10mm","right":"10mm","bottom":"10mm"}}'
+          # json con lista de PDFs a generar
+          pdfs: |
+            $(
+              count=$(jq 'length' cache/matrix.json)
+              if [ "$count" -eq 0 ]; then
+                echo "[]"
+              else
+                jq -c '.[] | {htmlFile: .url, outputFile: ("pdfs/"+.filename), pdfOptions: {"format":"A4","margin":{"top":"10mm","left":"10mm","right":"10mm","bottom":"10mm"}}}' cache/matrix.json | jq -s '.'
+              fi
+            )
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
