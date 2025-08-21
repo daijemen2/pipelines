@@ -38,12 +38,14 @@ jobs:
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare items
-        id: prepare_items
+      - name: Prepare events
+        id: prepare_events
         run: |
-          jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' \
-            cache/api_response.json > cache/matrix.json
+          # Usamos // [] para manejar casos donde .selected es null
+          jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
+              {title: .title, url: .content_urls.desktop.page, filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' \
+              cache/api_response.json > cache/matrix.json
+
           count=$(jq 'length' cache/matrix.json)
           echo "Found $count events"
           if [ "$count" -eq 0 ]; then
@@ -57,7 +59,6 @@ jobs:
             url=$(echo "$row" | jq -r '.url')
             file=$(echo "$row" | jq -r '.filename')
             echo "Generating PDF $file from $url"
-            # Llamada al Action de Marketplace para cada URL
             npx html2pdf-action --path "$url" --output "pdfs/$file" --options '{"format":"A4"}'
           done
 
