@@ -70,27 +70,27 @@ jobs:
         with:
           name: matrix
 
-      - name: Read matrix and set as environment variable
-        id: read_matrix
-        run: |
-          MATRIX=$(cat matrix.json)
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+      - name: Install jq
+        run: sudo apt-get install -y jq
 
       - name: Generate PDFs
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const matrix = JSON.parse(process.env.MATRIX);
-            const execSync = require('child_process').execSync;
+        run: |
+          mkdir -p pdfs
+          jq -c '.[]' matrix.json | while read -r item; do
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
 
-            for (const item of matrix) {
-              const cmd = `npx html-pdf-cli ${item.url} ${item.filename}`;
-              console.log(`Generating PDF: ${item.filename}`);
-              execSync(cmd, { stdio: 'inherit' });
-            }
+            echo "Generating PDF: $filename from $url"
+
+            gh workflow run html-to-pdf-action \
+              --repo narthanaj/html-to-pdf-action \
+              --ref v1.0.0 \
+              -f url="$url" \
+              -f outputFile="pdfs/$filename"
+          done
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
           name: generated-pdfs
-          path: '*.pdf'
+          path: pdfs/*.pdf
