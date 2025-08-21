@@ -1,6 +1,11 @@
 name: On This Day API Test Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
 
 env:
@@ -27,4 +32,4 @@ jobs:
       - name: Show API response
         run: |
           echo "API response:"
-          cat cache/api_response.json | jq '.selected[0]'
+          jq '.selected[0]' cache/api_response.json
