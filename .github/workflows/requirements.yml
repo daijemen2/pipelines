@@ -14,6 +14,8 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -36,60 +38,27 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare matrix and save to file
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const data = JSON.parse(fs.readFileSync('cache/api_response.json', 'utf8'));
-            const matrix = data.selected.map(event => {
-              const page = event.pages?.[0];
-              if (!page || !page.content_urls?.desktop?.page) return null;
-
-              const title = page.title.replace(/[^A-Za-z0-9_-]/g, '_');
-              const url = page.content_urls.desktop.page;
-              const filename = `07-01-${title}.pdf`;
-
-              return { title, url, filename };
-            }).filter(Boolean);
-
-            fs.writeFileSync('matrix.json', JSON.stringify(matrix, null, 2));
-
-      - name: Upload matrix file
-        uses: actions/upload-artifact@v4
-        with:
-          name: matrix
-          path: matrix.json
+      - name: Prepare matrix
+        id: set-matrix
+        run: |
+          matrix=$(jq '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) | 
+            {title: .title, url: .content_urls.desktop.page, filename: ("07-01-" + (.title|gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")}]' cache/api_response.json)
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
-      - name: Download matrix file
-        uses: actions/download-artifact@v4
+      - name: Create PDFs folder
+        run: mkdir -p pdfs
+
+      - name: Generate PDF
+        uses: chromium-actions/html-to-pdf-action@v2
         with:
-          name: matrix
-
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Generate PDFs using html-to-pdf-action
-        run: |
-          mkdir -p pdfs
-          jq -c '.[]' matrix.json | while read -r item; do
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
-
-            echo "::group::Generating PDF: $filename"
-            echo "url=$url" >> $GITHUB_ENV
-            echo "outputFile=pdfs/$filename" >> $GITHUB_ENV
-
-            echo "::endgroup::"
-
-            echo "::group::Run html-to-pdf-action"
-            echo "Calling action for $filename"
-            echo "::endgroup::"
-          done
+          url: ${{ matrix.url }}
+          outputPath: pdfs/${{ matrix.filename }}
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
