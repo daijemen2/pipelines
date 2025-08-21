@@ -40,31 +40,20 @@ jobs:
 
       - name: Prepare matrix
         id: set-matrix
-        run: |
-          jq -c '
-            .selected | map({
-              title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
-              url: .pages[0].content_urls.desktop.page,
-              filename: ("07-01-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf")
-            })
-          ' cache/api_response.json > matrix.json
-          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
-
-  generate_pdfs:
-    needs: fetch_events
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
-    steps:
-      - name: Generate PDF
-        uses: narthanaj/html-to-pdf-action@v1.0.0
+        uses: actions/github-script@v7
         with:
-          source: ${{ matrix.url }}
-          output: pdfs/${{ matrix.filename }}
+          script: |
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('cache/api_response.json', 'utf8'));
+            const matrix = data.selected.map(event => {
+              const page = event.pages?.[0];
+              if (!page || !page.content_urls?.desktop?.page) return null;
 
-      - name: Upload PDF
-        uses: actions/upload-artifact@v4
-        with:
-          name: historical-events-pdfs
-          path: pdfs
+              const title = page.title.replace(/[^A-Za-z0-9_-]/g, '_');
+              const url = page.content_urls.desktop.page;
+              const filename = `07-01-${title}.pdf`;
+
+              return { title, url, filename };
+            }).filter(Boolean);
+
+            core.setOutput('matrix', JSON.stringify(matrix));
