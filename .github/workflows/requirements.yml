@@ -31,7 +31,7 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          mkdir -p cache pdfs
+          mkdir -p cache pdfs html
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
@@ -43,15 +43,40 @@ jobs:
             cache/api_response.json > cache/matrix.json
           cat cache/matrix.json
 
-      - name: Generate PDFs using Marketplace Action
-        uses: arthur-jaouen/html2pdf-action@v1
-        with:
-          htmlFile: 'cache/matrix.json'
-          outputFile: 'pdfs/{{filename}}'
-          pdfOptions: '{"format": "A4", "printBackground": true, "preferCSSPageSize": true}'
+      - name: Generate HTML files for each event
+        run: |
+          cat cache/matrix.json | jq -c '.[]' | while read -r item; do
+            title=$(echo "$item" | jq -r '.title')
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
+            html_file="html/${filename%.pdf}.html"
 
-      - name: Upload PDFs
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-pdfs
-          path: pdfs/*.pdf
+            echo "<!DOCTYPE html>
+  <html>
+  <head>
+  <meta charset='UTF-8'>
+  <title>$title</title>
+  </head>
+  <body>
+  <h1>$title</h1>
+  <iframe src='$url' style='width:100%; height:1200px; border:none;'></iframe>
+  </body>
+  </html>" > "$html_file"
+  done
+
+- name: Generate PDFs using Marketplace Action
+  run: |
+    for html_file in html/*.html; do
+      pdf_file="pdfs/$(basename "$html_file" .html).pdf"
+      echo "Generating PDF $pdf_file from $html_file"
+      gh workflow run arthur-jaouen/html2pdf-action@v1 \
+        --htmlFile "$html_file" \
+        --outputFile "$pdf_file" \
+        --pdfOptions '{"format": "A4", "printBackground": true, "preferCSSPageSize": true}'
+    done
+
+- name: Upload PDFs
+  uses: actions/upload-artifact@v4
+  with:
+    name: generated-pdfs
+    path: pdfs/*.pdf
