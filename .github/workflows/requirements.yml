@@ -58,5 +58,21 @@ jobs:
 
             core.setOutput('matrix', JSON.stringify(matrix));
 
-      - name: Debug matrix output
-        run: echo '${{ steps.set-matrix.outputs.matrix }}'
+  generate_pdfs:
+    needs: fetch_events
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
+    steps:
+      - name: Generate PDF from Wikipedia page
+        uses: narthanaj/html-to-pdf-action@v1.0.0
+        with:
+          url: ${{ matrix.url }}
+          outputFile: ${{ matrix.filename }}
+
+      - name: Upload PDF as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.filename }}
+          path: ${{ matrix.filename }}
