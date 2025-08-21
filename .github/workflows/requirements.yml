@@ -30,10 +30,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
       - name: Call On This Day API
+        env:
+          MONTH: ${{ github.event.inputs.month }}
+          DAY: ${{ github.event.inputs.day }}
         run: |
+          echo "Calling API for $MONTH/$DAY in language $LANGUAGE"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${{ github.event.inputs.month }}/${{ github.event.inputs.day }}" \
+            "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
       - name: Validate API response
@@ -45,15 +49,18 @@ jobs:
 
       - name: Prepare matrix
         id: set-matrix
+        env:
+          MONTH: ${{ github.event.inputs.month }}
+          DAY: ${{ github.event.inputs.day }}
         run: |
-          jq -c --arg month "${{ github.event.inputs.month }}" --arg day "${{ github.event.inputs.day }}" '
+          MATRIX=$(jq -c --arg month "$MONTH" --arg day "$DAY" '
             .selected | map({
               title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
               url: .pages[0].content_urls.desktop.page,
               filename: ($month + "-" + $day + "-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf")
             })
-          ' cache/api_response.json > matrix.json
-          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
+          ' cache/api_response.json)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
