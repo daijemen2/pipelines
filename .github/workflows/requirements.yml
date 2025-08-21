@@ -1,6 +1,11 @@
 name: On This Day API Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
     inputs:
       month:
@@ -25,8 +30,9 @@ jobs:
       - name: Call On This Day API
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
+          # Usar inputs si se ejecuta manual, sino valores por default
+          MONTH="${{ github.event.inputs.month || '07' }}"
+          DAY="${{ github.event.inputs.day || '01' }}"
           echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
@@ -37,7 +43,7 @@ jobs:
         run: |
           mkdir -p cache
           jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: (\"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
+            {title: .title, url: .content_urls.desktop.page, filename: (\"${MONTH}-${DAY}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
             cache/api_response.json > cache/matrix.json
           echo "Matrix content:"
           cat cache/matrix.json
