@@ -16,8 +16,11 @@ env:
   LANGUAGE: es
 
 jobs:
-  fetch_and_generate:
+  fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_data: ${{ steps.set-matrix.outputs.has_data }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -32,36 +35,61 @@ jobs:
             "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare matrix.json
+      - name: Prepare matrix.json and set outputs
+        id: set-matrix
         run: |
-          jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: (\"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
-            cache/api_response.json > cache/matrix.json
-          echo "Matrix content:"
-          cat cache/matrix.json
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
+          MATRIX="[]"
 
+          if jq -e '.selected != null' cache/api_response.json > /dev/null; then
+            MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
+              [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+                {
+                  title: .title,
+                  url: .content_urls.desktop.page,
+                  filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
+                }
+              ]
+            ' cache/api_response.json)
+          fi
+
+          echo "$MATRIX" > cache/matrix.json
+
+          LENGTH=$(jq 'length' cache/matrix.json)
+
+          if [ "$LENGTH" -eq 0 ]; then
+            echo "has_data=false" >> $GITHUB_OUTPUT
+            echo 'matrix=[]' >> $GITHUB_OUTPUT
+          else
+            echo "has_data=true" >> $GITHUB_OUTPUT
+            MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
+            echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
+          fi
+
+  generate_pdfs:
+    needs: fetch_events
+    if: needs.fetch_events.outputs.has_data == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDFs using Marketplace Action
-        run: |
-          jq -c '.[]' cache/matrix.json | while read item; do
-            title=$(echo "$item" | jq -r '.title')
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
+      - name: Convert HTML to PDF
+        uses: narthanaj/html-to-pdf-action@v1
+        with:
+          source: ${{ matrix.url }}
+          output: pdfs/${{ matrix.filename }}
+          format: A4
+          orientation: portrait
+          print_background: true
 
-            echo "Generating PDF for: $title"
-            echo "URL: $url"
-            echo "Filename: $filename"
-
-            echo "source=$url" >> $GITHUB_ENV
-            echo "output=pdfs/$filename" >> $GITHUB_ENV
-
-            gh workflow run .github/workflows/_convert.yml -f source="$url" output="pdfs/$filename"
-          done
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
