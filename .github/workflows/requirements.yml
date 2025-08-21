@@ -38,12 +38,13 @@ jobs:
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare events
-        id: prepare_events
+      - name: Prepare events matrix
+        id: prepare_matrix
         run: |
-          # Usamos // [] para manejar casos donde .selected es null
           jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
-              {title: .title, url: .content_urls.desktop.page, filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' \
+              {title: .title,
+               url: .content_urls.desktop.page,
+               filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' \
               cache/api_response.json > cache/matrix.json
 
           count=$(jq 'length' cache/matrix.json)
@@ -53,12 +54,14 @@ jobs:
             exit 0
           fi
 
-      - name: Generate PDFs
+      - name: Generate PDFs (Marketplace Action)
         run: |
-          for row in $(jq -c '.[]' cache/matrix.json); do
+          mkdir -p pdfs
+          jq -c '.[]' cache/matrix.json | while IFS= read -r row; do
             url=$(echo "$row" | jq -r '.url')
             file=$(echo "$row" | jq -r '.filename')
             echo "Generating PDF $file from $url"
+            # Aquí usamos el Action de Marketplace correctamente
             npx html2pdf-action --path "$url" --output "pdfs/$file" --options '{"format":"A4"}'
           done
 
