@@ -63,11 +63,16 @@ jobs:
 
           echo "$MATRIX" > cache/matrix.json
 
-          HAS_DATA=$(jq 'length > 0' cache/matrix.json)
+          LENGTH=$(jq 'length' cache/matrix.json)
 
-          echo "has_data=$HAS_DATA" >> $GITHUB_OUTPUT
-          MATRIX_ESCAPED=$(echo "$MATRIX" | jq -c .)
-          echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
+          if [ "$LENGTH" -eq 0 ]; then
+            echo "has_data=false" >> $GITHUB_OUTPUT
+            echo 'matrix=[]' >> $GITHUB_OUTPUT
+          else
+            echo "has_data=true" >> $GITHUB_OUTPUT
+            MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
+            echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
+          fi
 
   generate_pdfs:
     needs: fetch_events
