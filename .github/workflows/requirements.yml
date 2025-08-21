@@ -1,4 +1,4 @@
-name: On This Day API Test Workflow
+name: On This Day API Workflow
 
 on:
   push:
@@ -7,44 +7,69 @@ on:
       - staging
       - master
   workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month (e.g., 01 for January)'
+        required: true
+        default: '01'
+      day:
+        description: 'Day (e.g., 01 for the 1st day of the month)'
+        required: true
+        default: '01'
 
 env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  test_on_this_day:
+  fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      - name: Call On This Day API (hardcoded date)
+      - name: Call On This Day API
         run: |
-          LANGUAGE="${{ env.LANGUAGE }}"
-          MONTH="07"
-          DAY="01"
-          echo "Calling API for $MONTH/$DAY in language $LANGUAGE"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
+            "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${{ github.event.inputs.month }}/${{ github.event.inputs.day }}" \
             > cache/api_response.json
 
-      - name: Extract first event info
-        id: extract
+      - name: Validate API response
         run: |
-          TITLE=$(jq -r '.selected[0].pages[0].title' cache/api_response.json | sed 's/[^A-Za-z0-9_-]/_/g')
-          URL=$(jq -r '.selected[0].pages[0].content_urls.desktop.page' cache/api_response.json)
-          echo "title=$TITLE" >> $GITHUB_OUTPUT
-          echo "url=$URL" >> $GITHUB_OUTPUT
+          if ! jq -e '.selected | length > 0' cache/api_response.json > /dev/null; then
+            echo "API response is empty or invalid."
+            exit 1
+          fi
 
+      - name: Prepare matrix
+        id: set-matrix
+        run: |
+          jq -c --arg month "${{ github.event.inputs.month }}" --arg day "${{ github.event.inputs.day }}" '
+            .selected | map({
+              title: (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")),
+              url: .pages[0].content_urls.desktop.page,
+              filename: ($month + "-" + $day + "-" + (.pages[0].title | gsub("[^A-Za-z0-9_-]"; "_")) + ".pdf")
+            })
+          ' cache/api_response.json > matrix.json
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
+
+  generate_pdfs:
+    needs: fetch_events
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
+    steps:
       - name: Generate PDF
         uses: narthanaj/html-to-pdf-action@v1.0.0
         with:
-          source: ${{ steps.extract.outputs.url }}
-          output: pdfs/07-01-${{ steps.extract.outputs.title }}.pdf
+          source: ${{ matrix.url }}
+          output: pdfs/${{ matrix.filename }}
 
       - name: Upload PDF
         uses: actions/upload-artifact@v4
         with:
-          name: historical-event-pdf
+          name: historical-events-pdfs
           path: pdfs
