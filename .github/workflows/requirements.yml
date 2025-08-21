@@ -1,11 +1,6 @@
 name: On This Day API Workflow
 
 on:
-  push:
-    branches:
-      - feature/*
-      - staging
-      - master
   workflow_dispatch:
     inputs:
       month:
@@ -15,101 +10,58 @@ on:
       day:
         description: 'Day in DD format (01-31)'
         required: true
-        default: '01'
+        default: '20'
 
 env:
-  LANGUAGE: ${{ secrets.LANGUAGE }}
+  LANGUAGE: es
 
 jobs:
-  fetch_events:
+  fetch_and_generate:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      has_data: ${{ steps.set-matrix.outputs.has_data }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
       - name: Call On This Day API
         run: |
-          LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
+          echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
+            "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare matrix.json and set outputs
-        id: set-matrix
+      - name: Prepare matrix.json
         run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
-            [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-              {
-                title: .title,
-                url: .content_urls.desktop.page,
-                filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
-              }
-            ]
-          ' cache/api_response.json)
-
-          echo "$MATRIX" > cache/matrix.json
-
-          echo "🔍 DEBUG: Contenido de matrix.json"
+          jq "[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
+            {title: .title, url: .content_urls.desktop.page, filename: (\"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-\" + (.title|gsub(\"[^A-Za-z0-9_]\"; \"_\")) + \".pdf\")}] " \
+            cache/api_response.json > cache/matrix.json
+          echo "Matrix content:"
           cat cache/matrix.json
 
-          LENGTH=$(jq 'length' cache/matrix.json)
-
-          if [ "$LENGTH" -eq 0 ]; then
-            echo "has_data=false" >> $GITHUB_OUTPUT
-            echo 'matrix=[]' >> $GITHUB_OUTPUT
-            echo "⚠️ DEBUG: No se encontraron eventos. matrix=[]"
-          else
-            echo "has_data=true" >> $GITHUB_OUTPUT
-            MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
-            echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
-            echo "✅ DEBUG: matrix=$MATRIX_ESCAPED"
-          fi
-
-  prepare_matrix:
-    needs: fetch_events
-    if: needs.fetch_events.outputs.has_data == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.pass.outputs.matrix }}
-    steps:
-      - name: Pasar matrix al siguiente job
-        id: pass
-        run: |
-          echo "matrix=${{ needs.fetch_events.outputs.matrix }}" >> $GITHUB_OUTPUT
-          echo "✅ DEBUG: matrix recibido en prepare_matrix: ${{ needs.fetch_events.outputs.matrix }}"
-
-  generate_pdfs:
-    needs: prepare_matrix
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.prepare_matrix.outputs.matrix) }}
-    steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Download HTML content
+      - name: Generate PDFs using Marketplace Action
         run: |
-          curl -s "${{ matrix.url }}" -o index.html
+          jq -c '.[]' cache/matrix.json | while read item; do
+            title=$(echo "$item" | jq -r '.title')
+            url=$(echo "$item" | jq -r '.url')
+            filename=$(echo "$item" | jq -r '.filename')
 
-      - name: Generate PDF
-        uses: arthur-jaouen/html2pdf-action@v1
-        with:
-          inputPath: './index.html'
-          outputPath: './pdfs/${{ matrix.filename }}'
-          pdfOptions: '{"format": "A4", "printBackground": true, "preferCSSPageSize": true}'
+            echo "Generating PDF for: $title"
+            echo "URL: $url"
+            echo "Filename: $filename"
 
+            echo "source=$url" >> $GITHUB_ENV
+            echo "output=pdfs/$filename" >> $GITHUB_ENV
+
+            gh workflow run .github/workflows/_convert.yml -f source="$url" output="pdfs/$filename"
+          done
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
