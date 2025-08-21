@@ -74,6 +74,7 @@ jobs:
             MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
             echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
           fi
+
   generate_pdfs:
     needs: fetch_events
     if: needs.fetch_events.outputs.has_data == 'true'
@@ -98,9 +99,30 @@ jobs:
           orientation: portrait
           print_background: true
 
-      - name: Upload PDF
+      - name: Upload PDFs (intermediate)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.filename }}
-          path: pdfs/${{ matrix.filename }}
+          name: partial-pdfs
+          path: pdfs/*
+          retention-days: 1
+
+  package_pdfs:
+    needs: generate_pdfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all partial PDFs
+        uses: actions/download-artifact@v4
+        with:
+          name: partial-pdfs
+          path: pdfs
+
+      - name: Create ZIP with all PDFs
+        run: |
+          zip -j all-pdfs.zip pdfs/*.pdf
+
+      - name: Upload single ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-pdfs
+          path: all-pdfs.zip
           retention-days: 1
