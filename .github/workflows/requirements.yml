@@ -43,15 +43,12 @@ jobs:
       - name: Prepare matrix
         id: prepare_matrix
         run: |
-          # Genera un JSON de la forma [{title, url, filename}, ...]
+          # Convertimos el JSON de la API en un array de {title, url, filename}
           matrix=$(jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
             {title: .title, url: .content_urls.desktop.page, filename: ("'"$MONTH-$DAY-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' cache/api_response.json)
-          # Aseguramos que no esté vacío
-          if [ "$matrix" = "[]" ]; then
-            echo "matrix=[]" >> $GITHUB_OUTPUT
-          else
-            echo "matrix=$matrix" >> $GITHUB_OUTPUT
-          fi
+
+          # Guardamos como output (aunque esté vacío)
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
@@ -63,11 +60,13 @@ jobs:
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDF
-        uses: chromium-actions/html-to-pdf-action@v2
+      - name: Generate PDF from URL
+        uses: ntdesmond/html2pdf-action@v1
         with:
-          url: ${{ matrix.url }}
-          outputPath: pdfs/${{ matrix.filename }}
+          path: ${{ matrix.url }}
+          output: pdfs/${{ matrix.filename }}
+          options: |
+            {"format":"A4"}
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
