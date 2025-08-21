@@ -54,14 +54,18 @@ jobs:
             exit 0
           fi
 
-      - name: Generate PDFs using Marketplace Action
-        uses: devops-infra/action-html2pdf@v2
-        with:
-          input: cache/matrix.json
-          output-dir: pdfs
-          filename-key: filename
-          url-key: url
-          options: '{"format":"A4"}'
+      - name: Generate PDFs
+        run: |
+          mkdir -p pdfs
+          for row in $(jq -c '.[]' cache/matrix.json); do
+            URL=$(echo "$row" | jq -r '.url')
+            FILE=$(echo "$row" | jq -r '.filename')
+            echo "Generating PDF: $FILE from $URL"
+          
+            # Marketplace Action que genera PDFs desde URL
+            # Esta línea ejecuta html2pdf-action del Marketplace
+            npx html2pdf-action --path "$URL" --output "pdfs/$FILE" --options '{"format":"A4"}'
+          done
 
       - name: Upload PDFs
         uses: actions/upload-artifact@v4
