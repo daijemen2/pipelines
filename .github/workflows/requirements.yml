@@ -29,7 +29,6 @@ jobs:
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
-
       - name: Call On This Day API
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
@@ -63,13 +62,11 @@ jobs:
 
           echo "$MATRIX" > cache/matrix.json
 
-          if [ "$(jq 'length' cache/matrix.json)" -eq 0 ]; then
-            echo "has_data=false" >> $GITHUB_OUTPUT
-            echo "matrix=[]" >> $GITHUB_OUTPUT
-          else
-            echo "has_data=true" >> $GITHUB_OUTPUT
-            echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
-          fi
+          HAS_DATA=$(jq 'length > 0' cache/matrix.json)
+
+          echo "has_data=$HAS_DATA" >> $GITHUB_OUTPUT
+          MATRIX_ESCAPED=$(echo "$MATRIX" | jq -c .)
+          echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
@@ -84,7 +81,6 @@ jobs:
 
       - name: Create PDFs folder
         run: mkdir -p pdfs
-
       - name: Convert HTML to PDF
         uses: narthanaj/html-to-pdf-action@v1
         with:
