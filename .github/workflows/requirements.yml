@@ -41,9 +41,13 @@ jobs:
       - name: Prepare matrix
         id: set-matrix
         run: |
-          matrix=$(jq '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) | 
+          matrix=$(jq -c '[.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
             {title: .title, url: .content_urls.desktop.page, filename: ("07-01-" + (.title|gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")}]' cache/api_response.json)
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          
+          # Usamos EOF para manejar JSON con comillas y caracteres especiales
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$matrix" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
   generate_pdfs:
     needs: fetch_events
