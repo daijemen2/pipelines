@@ -1,6 +1,11 @@
 name: On This Day API Workflow
 
 on:
+  push:
+    branches:
+      - feature/*
+      - staging
+      - master
   workflow_dispatch:
     inputs:
       month:
@@ -25,16 +30,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y curl jq
 
       - name: Call On This Day API
-        id: fetch
         run: |
           LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
           echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
-          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
-            > cache/api_response.json
+          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)"             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}"             > cache/api_response.json
 
       - name: Prepare matrix.json
         id: set-matrix
