@@ -29,14 +29,38 @@ jobs:
           URL="https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/$MONTH/$DAY"
           echo "Fetching $URL"
           curl -s $URL > events.json
-          cat events.json
+          echo "✅ Events JSON downloaded"
+          cat events.json | head -n 20
 
       - name: Parse JSON and create list of URLs
         id: parse
         run: |
+          echo "Parsing JSON to extract Wikipedia URLs..."
           urls=$(jq -r '.selected[].pages[0].content_urls.desktop.page' events.json)
           echo "$urls" > urls.txt
+          echo "✅ URLs extracted:"
           cat urls.txt
-          echo "urls<<EOF" >> $GITHUB_ENV
-          echo "$urls" >> $GITHUB_ENV
-          echo "EOF" >> $GITH
+          # Export as environment variable
+          {
+            echo "urls<<EOF"
+            echo "$urls"
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+      - name: Convert URLs to PDFs
+        id: convert
+        run: |
+          mkdir -p pdfs
+          i=1
+          while read -r url; do
+            echo "Converting $url -> pdfs/page_$i.pdf"
+            wkhtmltopdf "$url" "pdfs/page_$i.pdf"
+            i=$((i+1))
+          done < urls.txt
+          echo "✅ All PDFs generated"
+
+      - name: Upload PDFs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wikipedia-event-pdfs
+          path: pdfs/
