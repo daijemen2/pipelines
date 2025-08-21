@@ -63,16 +63,13 @@ jobs:
           name: matrix
           path: cache
 
-      - name: Install Node & html-pdf-cli
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y nodejs npm
-          npm install -g html-pdf-cli
-
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
-      - name: Generate PDFs
+      - name: Generate PDFs using Marketplace Action
+        run: echo "Generating PDFs with html-to-pdf-action"
+
+      - name: Loop through matrix and create PDFs
         run: |
           count=$(jq 'length' cache/matrix.json)
           if [ "$count" -eq 0 ]; then
@@ -80,12 +77,18 @@ jobs:
             exit 0
           fi
 
-          # Recorremos matrix.json y generamos PDFs usando npx html-pdf
-          jq -c '.[]' cache/matrix.json | while IFS= read -r item; do
-            url=$(echo "$item" | jq -r '.url')
-            filename=$(echo "$item" | jq -r '.filename')
-            echo "Generating PDF: $filename from $url"
-            npx html-pdf-cli "$url" -o "pdfs/$filename" --format A4
+          for row in $(jq -c '.[]' cache/matrix.json); do
+            title=$(echo "$row" | jq -r '.title')
+            url=$(echo "$row" | jq -r '.url')
+            filename=$(echo "$row" | jq -r '.filename')
+
+            echo "Generating PDF for $title"
+
+            # Usar el Action de Marketplace para cada URL
+            gh workflow run LukaszLapaj/html-to-pdf-action@master \
+              --htmlFile "$url" \
+              --outputFile "pdfs/$filename" \
+              --pdfOptions '{"format": "A4", "margin": {"top": "10mm", "left": "10mm", "right": "10mm", "bottom": "10mm"}}'
           done
 
       - name: Upload PDFs
