@@ -14,6 +14,8 @@ env:
 jobs:
   fetch_events:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -36,7 +38,8 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare matrix and save to file
+      - name: Prepare matrix
+        id: set-matrix
         uses: actions/github-script@v7
         with:
           script: |
@@ -53,52 +56,23 @@ jobs:
               return { title, url, filename };
             }).filter(Boolean);
 
-            fs.writeFileSync('matrix.json', JSON.stringify(matrix, null, 2));
-
-      - name: Upload matrix file
-        uses: actions/upload-artifact@v4
-        with:
-          name: matrix
-          path: matrix.json
+            core.setOutput('matrix', JSON.stringify(matrix));
 
   generate_pdfs:
     needs: fetch_events
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
-      - name: Download matrix file
-        uses: actions/download-artifact@v4
+      - name: HTML to PDF Converter
+        uses: narthanaj/html-to-pdf-action@v1.0.0
         with:
-          name: matrix
+          url: ${{ matrix.url }}
+          outputFile: ${{ matrix.filename }}
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          npm install -g html-to-pdf-cli
-
-      - name: Generate PDFs using html-to-pdf-cli
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const { execSync } = require('child_process');
-            const matrix = JSON.parse(fs.readFileSync('matrix.json', 'utf8'));
-
-            const outputDir = 'pdfs';
-            if (!fs.existsSync(outputDir)) {
-              fs.mkdirSync(outputDir);
-            }
-
-            for (const item of matrix) {
-              const url = item.url;
-              const filename = item.filename;
-
-              console.log(`Generating PDF: ${filename} from ${url}`);
-              const command = `html-to-pdf-cli -url "${url}" -saveto "${outputDir}" -pdf_name "${filename}"`;
-              execSync(command, { stdio: 'inherit' });
-            }
-
-      - name: Upload PDFs
+      - name: Upload PDF
         uses: actions/upload-artifact@v4
         with:
-          name: generated-pdfs
-          path: pdfs/*.pdf
+          name: ${{ matrix.filename }}
+          path: ${{ matrix.filename }}
