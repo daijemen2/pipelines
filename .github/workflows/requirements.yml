@@ -38,7 +38,7 @@ jobs:
           echo "url=$URL" >> $GITHUB_OUTPUT
 
       - name: Generate PDF
-        uses: narthanaj/html-to-pdf-action@v1
+        uses: narthanaj/html-to-pdf-action@v1.0.0
         with:
           source: ${{ steps.extract.outputs.url }}
           output: pdfs/07-01-${{ steps.extract.outputs.title }}.pdf
