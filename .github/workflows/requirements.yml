@@ -21,10 +21,8 @@ env:
   LANGUAGE: ${{ secrets.LANGUAGE }}
 
 jobs:
-  fetch_events:
+  generate_pdfs:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.prepare_matrix.outputs.matrix }}
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y curl jq
@@ -35,30 +33,34 @@ jobs:
           LANGUAGE="${{ env.LANGUAGE }}"
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          mkdir -p cache
+          mkdir -p cache pdfs
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
 
-      - name: Prepare matrix
-        id: prepare_matrix
+      - name: Prepare events list
+        id: prepare_list
         run: |
-          MATRIX=$(jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
-            {title: .title, url: .content_urls.desktop.page, filename: ("'"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' cache/api_response.json)
-          echo "Matrix=$MATRIX"
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          jq -c '[.selected // [] | .[] | .pages[0] | select(.content_urls.desktop.page != null) |
+            {title: .title,
+             url: .content_urls.desktop.page,
+             filename: ("'"${{ github.event.inputs.month }}-${{ github.event.inputs.day }}-"'"+(.title|gsub("[^A-Za-z0-9_]"; "_"))+".pdf")}]' \
+            cache/api_response.json > cache/matrix.json
 
-  generate_pdfs:
-    needs: fetch_events
-    runs-on: ubuntu-latest
-    strategy:
-      matrix: ${{fromJson(needs.fetch_events.outputs.matrix)}}
-    steps:
-      - name: Generate PDF from URL
-        uses: ntdesmond/html2pdf-action@v1
+          COUNT=$(jq 'length' cache/matrix.json)
+          echo "Found $COUNT events"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No events found, skipping PDF generation."
+            exit 0
+          fi
+
+      - name: Generate PDFs using Marketplace Action
+        uses: devops-infra/action-html2pdf@v2
         with:
-          url: ${{ matrix.url }}
-          output: pdfs/${{ matrix.filename }}
+          input: cache/matrix.json
+          output-dir: pdfs
+          filename-key: filename
+          url-key: url
           options: '{"format":"A4"}'
 
       - name: Upload PDFs
