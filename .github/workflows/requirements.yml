@@ -104,4 +104,45 @@ jobs:
           output: pdfs/${{ matrix.filename }}
           format: A4
           orientation: portrait
-          print_ba_
+          print_background: true
+
+      - name: Upload PDFs (temporary artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfs_artifact
+          path: pdfs/
+          retention-days: 1
+
+  zip_and_upload:
+    needs: generate_pdfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download PDFs from artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pdfs_artifact
+          path: pdfs
+
+      - name: Generate ZIP and summary
+        run: |
+          mkdir -p output
+          echo "Generating ZIP and summary..."
+          zip -j output/all_pdfs.zip pdfs/*.pdf
+
+          echo "PDF Summary:"
+          find pdfs -name '*.pdf' | while read file; do
+            name=$(basename "$file")
+            size=$(du -h "$file" | cut -f1)
+            hash=$(sha256sum "$file" | cut -d ' ' -f1)
+            echo "$name"
+            echo "$size"
+            echo "sha256:$hash"
+            echo ""
+          done
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all_pdfs
+          path: output/all_pdfs.zip
+          retention-days: 1
