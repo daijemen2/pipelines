@@ -92,31 +92,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create shared workspace
-        run: mkdir -p ${{ github.workspace }}/shared/pdfs
-
+      - name: Create PDFs folder
+        run: mkdir -p pdfs
       - name: Convert HTML to PDF
         uses: narthanaj/html-to-pdf-action@main
         timeout-minutes: 5
         continue-on-error: true
         with:
           source: ${{ matrix.url }}
-          output: ${{ github.workspace }}/shared/pdfs/${{ matrix.filename }}
+          output: pdfs/${{ matrix.filename }}
           format: A4
           orientation: portrait
           print_background: true
+      - name: Upload PDF to hidden-pdfs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidden-pdfs
+          path: pdfs/${{ matrix.filename }}
+          retention-days: 1
 
   zip_and_upload:
     needs: generate_pdfs
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Copy PDFs from workspace
-        run: |
-          mkdir -p pdfs
-          cp -r ${{ github.workspace }}/shared/pdfs/* pdfs/
+      - name: Download all hidden PDFs
+        uses: actions/download-artifact@v4
+        with:
+          name: hidden-pdfs
+          path: pdfs
 
       - name: Generate ZIP and summary
         run: |
