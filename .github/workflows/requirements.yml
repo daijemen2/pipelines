@@ -12,136 +12,87 @@ on:
         required: true
         default: '14'
 
-env:
-  LANGUAGE: ${{ vars.LANG }}
-
 jobs:
-  fetch_events:
+  fetch-and-generate-pdfs:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      has_data: ${{ steps.set-matrix.outputs.has_data }}
-    steps:
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl jq
 
-      - name: Restore API cache
-        id: cache
-        uses: actions/cache@v3
-        with:
-          path: cache/api_response.json
-          key: api-cache-${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
-
-      - name: Call On This Day API
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          echo "📡 Fetching events for $MONTH/$DAY"
-          mkdir -p cache
-          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
-            > cache/api_response.json
-          echo "✅ API response stored in cache/api_response.json"
-
-      - name: Prepare matrix.json and set outputs
-        id: set-matrix
-        run: |
-          MONTH="${{ github.event.inputs.month }}"
-          DAY="${{ github.event.inputs.day }}"
-          MATRIX="[]"
-
-          if jq -e '.selected != null' cache/api_response.json > /dev/null; then
-            MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
-              [.selected[] 
-                | select(.pages | length > 0) 
-                | .pages[0] 
-                | select(.content_urls.desktop.page != null) 
-                | {
-                    title: .title,
-                    url: .content_urls.desktop.page,
-                    filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
-                  }
-              ]
-            ' cache/api_response.json)
-          fi
-
-          echo "$MATRIX" > cache/matrix.json
-          LENGTH=$(jq 'length' cache/matrix.json)
-
-          if [ "$LENGTH" -eq 0 ]; then
-            echo "has_data=false" >> $GITHUB_OUTPUT
-            echo 'matrix=[]' >> $GITHUB_OUTPUT
-            echo "No events found for this date."
-          else
-            echo "has_data=true" >> $GITHUB_OUTPUT
-            MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
-            echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
-            echo "✅ Found $LENGTH events."
-          fi
-
-  generate_pdfs:
-    needs: fetch_events
-    if: needs.fetch_events.outputs.has_data == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create PDFs folder
-        run: mkdir -p pdfs
-
-      - name: Convert HTML to PDF
-        uses: narthanaj/html-to-pdf-action@main
-        timeout-minutes: 5
-        continue-on-error: true
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          source: ${{ matrix.url }}
-          output: pdfs/${{ matrix.filename }}
-          format: A4
-          orientation: portrait
-          print_background: true
+          node-version: '18'
 
-      - name: Upload PDF (temporary artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: pdf-${{ matrix.filename }}
-          path: pdfs/${{ matrix.filename }}
-          retention-days: 1
+      - name: Install dependencies
+        run: npm install axios
 
-  zip_and_upload:
-    needs: generate_pdfs
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all PDFs
-        uses: actions/download-artifact@v4
-        with:
-          path: pdfs
-
-      - name: Generate ZIP and summary
+      - name: Fetch data from On This Day API
+        id: fetch-data
         run: |
-          mkdir -p output
-          echo "Generating ZIP and summary..."
-          zip -j output/all_pdfs.zip pdfs/*/*.pdf
+          node <<'EOF'
+          const fs = require('fs');
+          const axios = require('axios');
 
-          echo "PDF Summary:"
-          find pdfs -name '*.pdf' | while read file; do
-            name=$(basename "$file")
-            size=$(du -h "$file" | cut -f1)
-            hash=$(sha256sum "$file" | cut -d ' ' -f1)
-            echo "$name"
-            echo "$size"
-            echo "sha256:$hash"
-            echo ""
-          done
+          const month = process.env.MONTH;
+          const day = process.env.DAY;
+          const url = `https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/all/${month}/${day}`;
+
+          axios.get(url)
+            .then(response => {
+              fs.writeFileSync('data.json', JSON.stringify(response.data));
+              console.log("✅ Data saved");
+            })
+            .catch(err => {
+              console.error("❌ Error fetching data:", err);
+              process.exit(1);
+            });
+          EOF
+        env:
+          MONTH: ${{ github.event.inputs.month }}
+          DAY: ${{ github.event.inputs.day }}
+
+      - name: Parse data and create PDFs
+        run: |
+          mkdir -p pdfs
+          node <<'EOF'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+
+          const data = JSON.parse(fs.readFileSync('data.json'));
+          const events = data.selected || [];
+
+          if (events.length === 0) {
+            console.log("⚠️ No events found.");
+            process.exit(0);
+          }
+
+          events.forEach((event, index) => {
+            try {
+              const title = event.pages[0]?.titles?.normalized || `event-${index}`;
+              const url = event.pages[0]?.content_urls?.desktop?.page;
+
+              if (!url) return;
+
+              const filename = `pdfs/pdf-${process.env.MONTH}-${process.env.DAY}-${title.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+              console.log(`📄 Generating PDF: ${filename}`);
+
+              execSync(`npx wkhtmltopdf ${url} "${filename}"`);
+            } catch (err) {
+              console.error("❌ Error generating PDF:", err.message);
+            }
+          });
+          EOF
+        env:
+          MONTH: ${{ github.event.inputs.month }}
+          DAY: ${{ github.event.inputs.day }}
+
+      - name: Compress PDFs into a single ZIP
+        run: zip -r all_pdfs.zip pdfs/
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: all_pdfs
-          path: output/all_pdfs.zip
-          retention-days: 1
+          path: all_pdfs.zip
