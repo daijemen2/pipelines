@@ -106,13 +106,7 @@ jobs:
           orientation: portrait
           print_background: true
 
-      - name: Upload PDF as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.filename }}
-          path: pdfs/${{ matrix.filename }}
-          retention-days: 1
+      # <-- Eliminado Upload de PDFs individuales -->
 
   zip_and_upload:
     needs: generate_pdfs
@@ -123,22 +117,10 @@ jobs:
         with:
           path: pdfs
 
-      - name: Generate ZIP and summary
+      - name: Generate ZIP
         run: |
           mkdir -p output
-          echo "Generating ZIP and summary..."
-          zip -j output/all_pdfs.zip pdfs/*/*.pdf
-
-          echo "PDF Summary:"
-          find pdfs -name '*.pdf' | while read file; do
-            name=$(basename "$file")
-            size=$(du -h "$file" | cut -f1)
-            hash=$(sha256sum "$file" | cut -d ' ' -f1)
-            echo "$name"
-            echo "$size"
-            echo "sha256:$hash"
-            echo ""
-          done
+          zip -j output/all_pdfs.zip pdfs/*
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
