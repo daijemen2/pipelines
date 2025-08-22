@@ -37,11 +37,12 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          echo "Fetching events for $MONTH/$DAY"
+          echo "📡 Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
+          echo "✅ API response stored in cache/api_response.json"
 
       - name: Prepare matrix.json and set outputs
         id: set-matrix
@@ -52,28 +53,33 @@ jobs:
 
           if jq -e '.selected != null' cache/api_response.json > /dev/null; then
             MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
-              [.selected[] | .pages[0] | select(.content_urls.desktop.page != null) |
-                {
-                  title: .title,
-                  url: .content_urls.desktop.page,
-                  filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
-                }
+              [.selected[] 
+                | select(.pages | length > 0) 
+                | .pages[0] 
+                | select(.content_urls.desktop.page != null) 
+                | {
+                    title: .title,
+                    url: .content_urls.desktop.page,
+                    filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
+                  }
               ]
             ' cache/api_response.json)
           fi
 
           echo "$MATRIX" > cache/matrix.json
-
           LENGTH=$(jq 'length' cache/matrix.json)
 
           if [ "$LENGTH" -eq 0 ]; then
             echo "has_data=false" >> $GITHUB_OUTPUT
             echo 'matrix=[]' >> $GITHUB_OUTPUT
+            echo "No events found for this date."
           else
             echo "has_data=true" >> $GITHUB_OUTPUT
             MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
             echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
+            echo "✅ Found $LENGTH events."
           fi
+
   generate_pdfs:
     needs: fetch_events
     if: needs.fetch_events.outputs.has_data == 'true'
@@ -84,13 +90,15 @@ jobs:
         include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Create PDFs folder
         run: mkdir -p pdfs
 
       - name: Convert HTML to PDF
         uses: narthanaj/html-to-pdf-action@main
+        timeout-minutes: 5
+        continue-on-error: true
         with:
           source: ${{ matrix.url }}
           output: pdfs/${{ matrix.filename }}
@@ -98,9 +106,43 @@ jobs:
           orientation: portrait
           print_background: true
 
-      - name: Upload PDF
+      - name: Upload PDF as artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.filename }}
           path: pdfs/${{ matrix.filename }}
+          retention-days: 1
+
+  zip_and_upload:
+    needs: generate_pdfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all PDFs
+        uses: actions/download-artifact@v4
+        with:
+          path: pdfs
+
+      - name: Generate ZIP and summary
+        run: |
+          mkdir -p output
+          echo "Generating ZIP and summary..."
+          find pdfs -name '*.pdf' -exec zip -j output/all_pdfs.zip {} +
+
+          echo "PDF Summary:"
+          find pdfs -name '*.pdf' | while read file; do
+            name=$(basename "$file")
+            size=$(du -h "$file" | cut -f1)
+            hash=$(sha256sum "$file" | cut -d ' ' -f1)
+            echo "$name"
+            echo "$size"
+            echo "sha256:$hash"
+            echo ""
+          done
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all_pdfs
+          path: output/all_pdfs.zip
           retention-days: 1
