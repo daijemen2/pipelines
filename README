@@ -1,0 +1,49 @@
+# On This Day API Workflow
+
+Este workflow de GitHub Actions obtiene eventos históricos desde la API "On This Day" de Wikimedia para una fecha específica, convierte las páginas de eventos seleccionadas a formato PDF y las empaqueta en un archivo ZIP para su descarga.
+
+## 📅 Disparador
+
+El workflow se ejecuta manualmente mediante `workflow_dispatch` con los siguientes inputs:
+
+- `month`: Mes en formato MM (01-12)
+- `day`: Día en formato DD (01-31)
+
+## 🌐 Entorno
+
+- `LANGUAGE`: Código de idioma usado para consultar la API de Wikimedia (por ejemplo, `en`, `es`, etc.)
+
+## 🧩 Estructura del Workflow
+
+### 1. `fetch_events`
+
+- **Instala dependencias**: `curl`, `jq`
+- **Restaura caché**: Intenta recuperar la respuesta de la API desde caché.
+- **Llama a la API**: Si no hay caché, consulta la API de Wikimedia.
+- **Prepara matriz**: Extrae eventos con URLs válidas y genera una matriz `{title, url, filename}`.
+- **Outputs**:
+  - `matrix`: Arreglo JSON con eventos a procesar.
+  - `has_data`: Booleano que indica si se encontraron eventos.
+
+### 2. `generate_pdfs`
+
+- **Condición**: Se ejecuta solo si `has_data` es `true`.
+- **Estrategia de matriz**: Itera sobre cada evento en la matriz.
+- **Pasos**:
+  - Clona el repositorio.
+  - Crea carpeta `pdfs`.
+  - Convierte cada página HTML a PDF usando `html-to-pdf-action`.
+  - Sube cada PDF como artefacto.
+
+### 3. `zip_and_upload`
+
+- **Pasos**:
+  - Descarga todos los PDFs.
+  - Genera un archivo ZIP con todos los PDFs.
+  - Muestra resumen de cada PDF (nombre, tamaño, hash SHA256).
+  - Sube el ZIP como artefacto.
+
+## 📦 Artefactos
+
+- PDFs individuales por evento.
+- Archivo ZIP (`all_pdfs.zip`) con todos los PDFs.
