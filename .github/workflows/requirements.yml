@@ -4,95 +4,70 @@ on:
   workflow_dispatch:
     inputs:
       month:
-        description: 'Month in MM format (01-12)'
+        description: 'Month (MM)'
         required: true
-        default: '04'
+        default: '05'
       day:
-        description: 'Day in DD format (01-31)'
+        description: 'Day (DD)'
         required: true
         default: '14'
 
 jobs:
-  fetch-and-generate-pdfs:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: npm install axios
-
-      - name: Fetch data from On This Day API
-        id: fetch-data
+      - name: Set variables
         run: |
-          node <<'EOF'
-          const fs = require('fs');
-          const axios = require('axios');
+          echo "MONTH=${{ github.event.inputs.month }}" >> $GITHUB_ENV
+          echo "DAY=${{ github.event.inputs.day }}" >> $GITHUB_ENV
 
-          const month = process.env.MONTH;
-          const day = process.env.DAY;
-          const url = `https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/all/${month}/${day}`;
+      - name: Fetch On This Day events
+        run: |
+          curl -s "https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/all/${MONTH}/${DAY}" > data.json
+          cat data.json | head -n 20
 
-          axios.get(url)
-            .then(response => {
-              fs.writeFileSync('data.json', JSON.stringify(response.data));
-              console.log("✅ Data saved");
-            })
-            .catch(err => {
-              console.error("❌ Error fetching data:", err);
-              process.exit(1);
-            });
-          EOF
-        env:
-          MONTH: ${{ github.event.inputs.month }}
-          DAY: ${{ github.event.inputs.day }}
+      - name: Install wkhtmltopdf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wkhtmltopdf
 
-      - name: Parse data and create PDFs
+      - name: Generate PDFs
         run: |
           mkdir -p pdfs
           node <<'EOF'
           const fs = require('fs');
           const { execSync } = require('child_process');
-
+          
           const data = JSON.parse(fs.readFileSync('data.json'));
           const events = data.selected || [];
-
+          
           if (events.length === 0) {
             console.log("⚠️ No events found.");
             process.exit(0);
           }
-
+          
           events.forEach((event, index) => {
             try {
               const title = event.pages[0]?.titles?.normalized || `event-${index}`;
               const url = event.pages[0]?.content_urls?.desktop?.page;
-
+          
               if (!url) return;
-
+          
               const filename = `pdfs/pdf-${process.env.MONTH}-${process.env.DAY}-${title.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
               console.log(`📄 Generating PDF: ${filename}`);
-
-              execSync(`npx wkhtmltopdf ${url} "${filename}"`);
+          
+              execSync(`wkhtmltopdf ${url} "${filename}"`);
             } catch (err) {
               console.error("❌ Error generating PDF:", err.message);
             }
           });
           EOF
-        env:
-          MONTH: ${{ github.event.inputs.month }}
-          DAY: ${{ github.event.inputs.day }}
 
-      - name: Compress PDFs into a single ZIP
-        run: zip -r all_pdfs.zip pdfs/
-
-      - name: Upload ZIP artifact
+      - name: Upload PDFs
         uses: actions/upload-artifact@v4
         with:
-          name: all_pdfs
-          path: all_pdfs.zip
+          name: pdfs-${{ env.MONTH }}-${{ env.DAY }}
+          path: pdfs
