@@ -4,47 +4,145 @@ on:
   workflow_dispatch:
     inputs:
       month:
-        description: 'Month (01-12)'
+        description: 'Month in MM format (01-12)'
         required: true
-        default: '01'
+        default: '04'
       day:
-        description: 'Day (01-31)'
+        description: 'Day in DD format (01-31)'
         required: true
-        default: '01'
+        default: '14'
+
+env:
+  LANGUAGE: ${{ vars.LANG }}
 
 jobs:
-  fetch-and-generate-matrix:
+  fetch_events:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.build-matrix.outputs.matrix }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_data: ${{ steps.set-matrix.outputs.has_data }}
     steps:
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y curl jq
+
+      - name: Restore API cache
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: cache/api_response.json
+          key: api-cache-${{ env.LANGUAGE }}-${{ github.event.inputs.month }}-${{ github.event.inputs.day }}
+
       - name: Call On This Day API
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          curl -s "https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/${{ github.event.inputs.month }}/${{ github.event.inputs.day }}" \
-          -H "accept: application/json" > response.json
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
+          echo "📡 Fetching events for $MONTH/$DAY"
+          mkdir -p cache
+          curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
+            "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
+            > cache/api_response.json
+          echo "✅ API response stored in cache/api_response.json"
 
-      - name: Build matrix from response.json
-        id: build-matrix
+      - name: Prepare matrix.json and set outputs
+        id: set-matrix
         run: |
-          # Extraer todas las URLs de los eventos
-          urls=$(jq -r '.selected[]?.pages[0]?.content_urls?.desktop?.page // empty' response.json)
+          MONTH="${{ github.event.inputs.month }}"
+          DAY="${{ github.event.inputs.day }}"
+          MATRIX="[]"
 
-          if [ -z "$urls" ]; then
-            echo "No se encontraron URLs en el JSON"
-            echo "matrix=[]" >> $GITHUB_OUTPUT
-            exit 0
+          if jq -e '.selected != null' cache/api_response.json > /dev/null; then
+            MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
+              [.selected[] 
+                | select(.pages | length > 0) 
+                | .pages[0] 
+                | select(.content_urls.desktop.page != null) 
+                | {
+                    title: .title,
+                    url: .content_urls.desktop.page,
+                    filename: ($month + "-" + $day + "-" + (.title | gsub("[^A-Za-z0-9_]"; "_")) + ".pdf")
+                  }
+              ]
+            ' cache/api_response.json)
           fi
 
-          arr=()
-          i=1
-          for url in $urls; do
-            filename="event_$i.pdf"
-            arr+=("{\"url\":\"$url\",\"filename\":\"$filename\"}")
-            i=$((i+1))
+          echo "$MATRIX" > cache/matrix.json
+          LENGTH=$(jq 'length' cache/matrix.json)
+
+          if [ "$LENGTH" -eq 0 ]; then
+            echo "has_data=false" >> $GITHUB_OUTPUT
+            echo 'matrix=[]' >> $GITHUB_OUTPUT
+            echo "No events found for this date."
+          else
+            echo "has_data=true" >> $GITHUB_OUTPUT
+            MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
+            echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
+            echo "✅ Found $LENGTH events."
+          fi
+
+  generate_pdfs:
+    needs: fetch_events
+    if: needs.fetch_events.outputs.has_data == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.fetch_events.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create PDFs folder
+        run: mkdir -p pdfs
+
+      - name: Convert HTML to PDF
+        uses: narthanaj/html-to-pdf-action@main
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          source: ${{ matrix.url }}
+          output: pdfs/${{ matrix.filename }}
+          format: A4
+          orientation: portrait
+          print_background: true
+
+      - name: Upload PDF as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.filename }}
+          path: pdfs/${{ matrix.filename }}
+          retention-days: 1
+
+  zip_and_upload:
+    needs: generate_pdfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all PDFs
+        uses: actions/download-artifact@v4
+        with:
+          path: pdfs
+
+      - name: Generate ZIP and summary
+        run: |
+          mkdir -p output
+          echo "Generating ZIP and summary..."
+          find pdfs -name '*.pdf' -exec zip -j output/all_pdfs.zip {} +
+
+          echo "PDF Summary:"
+          find pdfs -name '*.pdf' | while read file; do
+            name=$(basename "$file")
+            size=$(du -h "$file" | cut -f1)
+            hash=$(sha256sum "$file" | cut -d ' ' -f1)
+            echo "$name"
+            echo "$size"
+            echo "sha256:$hash"
+            echo ""
           done
 
-          # Convertir a JSON array
-          matrix=$(printf '%s\n' "${arr[@]}" | jq -s .)
-
-          echo "Matrix: $matrix"
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all_pdfs
+          path: output/all_pdfs.zip
+          retention-days: 1
