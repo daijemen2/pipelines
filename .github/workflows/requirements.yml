@@ -106,28 +106,27 @@ jobs:
           orientation: portrait
           print_background: true
 
-      - name: Upload PDFs (temporary artifact)
+      - name: Upload PDF (temporary artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: pdfs_artifact
-          path: pdfs/
+          name: pdf-${{ matrix.filename }}
+          path: pdfs/${{ matrix.filename }}
           retention-days: 1
 
   zip_and_upload:
     needs: generate_pdfs
     runs-on: ubuntu-latest
     steps:
-      - name: Download PDFs from artifact
+      - name: Download all PDFs
         uses: actions/download-artifact@v4
         with:
-          name: pdfs_artifact
           path: pdfs
 
       - name: Generate ZIP and summary
         run: |
           mkdir -p output
           echo "Generating ZIP and summary..."
-          zip -j output/all_pdfs.zip pdfs/*.pdf
+          zip -j output/all_pdfs.zip pdfs/*/*.pdf
 
           echo "PDF Summary:"
           find pdfs -name '*.pdf' | while read file; do
