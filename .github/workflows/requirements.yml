@@ -105,6 +105,13 @@ jobs:
           format: A4
           orientation: portrait
           print_background: true
+      - name: Upload all PDFs as single artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all_generated_pdfs
+          path: pdfs/
+          retention-days: 1
 
   zip_and_upload:
     needs: generate_pdfs
@@ -113,6 +120,7 @@ jobs:
       - name: Download all PDFs
         uses: actions/download-artifact@v4
         with:
+          name: all_generated_pdfs
           path: pdfs
 
       - name: Generate ZIP and summary
