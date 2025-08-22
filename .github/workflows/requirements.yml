@@ -37,14 +37,14 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
+          echo "📡 Fetching events for $MONTH/$DAY"
           mkdir -p cache
-          echo "📡 Fetching events for $MONTH/$DAY in $LANGUAGE"
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
-            "https://api.wikimedia.org/feed/v1/wikipedia/${LANGUAGE}/onthisday/selected/${MONTH}/${DAY}" \
+            "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
           echo "✅ API response stored in cache/api_response.json"
 
-      - name: Prepare matrix and set outputs
+      - name: Prepare matrix.json and set outputs
         id: set-matrix
         run: |
           MONTH="${{ github.event.inputs.month }}"
@@ -53,10 +53,10 @@ jobs:
 
           if jq -e '.selected != null' cache/api_response.json > /dev/null; then
             MATRIX=$(jq --arg month "$MONTH" --arg day "$DAY" '
-              [.selected[]
-                | select(.pages | length > 0)
-                | .pages[0]
-                | select(.content_urls.desktop.page != null)
+              [.selected[] 
+                | select(.pages | length > 0) 
+                | .pages[0] 
+                | select(.content_urls.desktop.page != null) 
                 | {
                     title: .title,
                     url: .content_urls.desktop.page,
@@ -72,7 +72,7 @@ jobs:
           if [ "$LENGTH" -eq 0 ]; then
             echo "has_data=false" >> $GITHUB_OUTPUT
             echo 'matrix=[]' >> $GITHUB_OUTPUT
-            echo "⚠️ No events found for this date."
+            echo "No events found for this date."
           else
             echo "has_data=true" >> $GITHUB_OUTPUT
             MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
@@ -106,7 +106,13 @@ jobs:
           orientation: portrait
           print_background: true
 
-      # <-- Eliminado Upload de PDFs individuales -->
+      - name: Upload PDF as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.filename }}
+          path: pdfs/${{ matrix.filename }}
+          retention-days: 1
 
   zip_and_upload:
     needs: generate_pdfs
@@ -117,10 +123,22 @@ jobs:
         with:
           path: pdfs
 
-      - name: Generate ZIP
+      - name: Generate ZIP and summary
         run: |
           mkdir -p output
-          zip -j output/all_pdfs.zip pdfs/*
+          echo "Generating ZIP and summary..."
+          find pdfs -name '*.pdf' -exec zip -j output/all_pdfs.zip {} +
+
+          echo "PDF Summary:"
+          find pdfs -name '*.pdf' | while read file; do
+            name=$(basename "$file")
+            size=$(du -h "$file" | cut -f1)
+            hash=$(sha256sum "$file" | cut -d ' ' -f1)
+            echo "$name"
+            echo "$size"
+            echo "sha256:$hash"
+            echo ""
+          done
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
