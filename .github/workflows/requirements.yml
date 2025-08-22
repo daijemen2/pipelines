@@ -37,12 +37,12 @@ jobs:
         run: |
           MONTH="${{ github.event.inputs.month }}"
           DAY="${{ github.event.inputs.day }}"
-          echo "📡 Fetching events for $MONTH/$DAY"
+          echo "Fetching events for $MONTH/$DAY"
           mkdir -p cache
           curl -s -H "Api-User-Agent: OnThisDayWorkflow (developer@example.com)" \
             "https://api.wikimedia.org/feed/v1/wikipedia/${{ env.LANGUAGE }}/onthisday/selected/${MONTH}/${DAY}" \
             > cache/api_response.json
-          echo "✅ API response stored in cache/api_response.json"
+          echo "API response stored in cache/api_response.json"
 
       - name: Prepare matrix.json and set outputs
         id: set-matrix
@@ -77,7 +77,7 @@ jobs:
             echo "has_data=true" >> $GITHUB_OUTPUT
             MATRIX_ESCAPED=$(jq -c . cache/matrix.json)
             echo "matrix=$MATRIX_ESCAPED" >> $GITHUB_OUTPUT
-            echo "✅ Found $LENGTH events."
+            echo "Found $LENGTH events."
           fi
 
   generate_pdfs:
